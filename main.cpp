@@ -232,11 +232,6 @@ class Frame{
         char *Dprefix;
 
         void printLogo(int x, int y); //로고 프린트
-        string LogoArr[3] = { //로고 배열
-            "==================",
-            "|                |",
-            "=================="
-        };
         int LogoVertical = 3; //로고 세로 길이
 
         void print();
@@ -255,7 +250,7 @@ Frame::Frame(int fps, int horizontal, int vertical){
     }
 
     this->frame = frameVertical;
-    this->SkipFramePer = 2;
+    this->SkipFramePer = 1;
 
     this->Dprefix = "█";
     Console::init();
@@ -331,9 +326,9 @@ Game::Game(string DataFile){
     this->printframe = new Frame(2000, 15, 30);
     this->frame = this->printframe->frame;
 
-    this->FrameClock = 5;
+    this->FrameClock = 10;
     this->patchMonsterFrame = 10;
-    this->bulletClock = 5;
+    this->bulletClock = 1;
 }
 
 void Game::init(){
