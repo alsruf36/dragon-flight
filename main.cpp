@@ -1,6 +1,10 @@
 /*
 Dragon Flight by Mingyeol Kim, Sujung Lee
 
+===! 주의 !===
+이 파일은 UTF-8로 인코딩 되어있어 DEV-C++로 열 수 없습니다.
+컴파일 시에는 C++11 이상을 사용하여야 합니다.
+
 === 게임 설명 ===
 이 게임은 라인 게임즈의 드레곤 플라이트를 콘솔 버전으로 모작한 게임입니다.
 
@@ -342,12 +346,12 @@ class Game{
         int FrameClock; //프레임을 갱신할 클럭
         int patchMonsterFrame; //몬스터를 패치할 프레임 배수 
         int bulletClock; //총알을 패치할 클럭 배수
-        void makeClockFrame(); //연산 클럭을 생성함
+        void makeClock(); //연산 클럭을 생성함
         bool updateFrame(); //배열을 조작함
         void patchPlayer(Console::xy coor); //플레이어의 가로 위치를 프레임에 패치
         void patchMonster(); //프레임의 맨 윗줄에 몬스터를 패치
         bool shiftFrame(); //맨 윗줄부터 플레이어 이전 줄을 한 칸 아래로 밂
-        void makeFrame(); //매 클럭당 출력
+        void printFrame(); //매 클럭당 출력
         void Over(); //몬스터와 플레이어 충돌시 실행되는 함수
 
         void init(); //새 게임 시작 전 초기화자
@@ -396,7 +400,7 @@ int Game::getKEY(){ //Depreciated
                 else if (key == 80) this->streamKEY(4); //아래
             }
         }
-        this->makeFrame();
+        this->printFrame();
     }
 }
 
@@ -405,7 +409,7 @@ int Game::streamKEY(int key){ // 1==오른쪽, 2==왼쪽, 3==위, 4==아래
 }
 
 /*
-[Game::makeClockFrame()]
+[Game::makeClock()]
 다음의 알고리즘을 반복합니다.
 1. 마우스의 움직임을 감지할 waitMouse() 스레드를 생성한다.
 
@@ -415,11 +419,11 @@ int Game::streamKEY(int key){ // 1==오른쪽, 2==왼쪽, 3==위, 4==아래
 
 3. updateFrame() 함수를 이용하여 특정 클럭 마다 프레임을 업데이트 한다.
 
-4. makeFrame() 함수를 이용하여 매 클럭마다 프레임을 출력한다.
+4. printFrame() 함수를 이용하여 매 클럭마다 프레임을 출력한다.
 
 5. 만약) 스레드가 join 되었다면 1로, 아니라면 2로 간다.
 */
-void Game::makeClockFrame(){
+void Game::makeClock(){
     bool gameStatus = true;
     while(1){
         promise<Console::xy> p;
@@ -430,14 +434,14 @@ void Game::makeClockFrame(){
             future_status status = coor.wait_for(std::chrono::milliseconds((int)(this->printframe->interval * 1000)));
             if (status == future_status::timeout){
                 gameStatus = this->updateFrame();
-                this->makeFrame();
+                this->printFrame();
                 if(gameStatus == false) break;
             }
             else if (status == future_status::ready){
                 xy = coor.get();
                 this->patchPlayer(xy);
                 this->updateFrame();
-                this->makeFrame();
+                this->printFrame();
                 Console::sleep(this->printframe->interval);
                 break;
             }
@@ -448,7 +452,7 @@ void Game::makeClockFrame(){
 }
 
 /*
-[Game::makeFrame()]
+[Game::printFrame()]
 다음의 알고리즘을 시행합니다.
 1. 만약 t_clock (작은 단위의 클럭)이 (fps-1)에 도달하면 1-1 아니면 2
 1-1. m_clock (큰 단위의 클럭)을 1 증가시킨후 t_clock을 0으로 초기화한다.
@@ -457,7 +461,7 @@ void Game::makeClockFrame(){
 
 3. 프레임을 출력한다.
 */
-void Game::makeFrame(){
+void Game::printFrame(){
     if(this->t_clock == this->printframe->fps-1){
         this->m_clock++;
         this->t_clock = 0;
@@ -564,5 +568,5 @@ int main(){
 //   cout << v.GetString() << endl;
 
     game.init();
-    game.makeClockFrame();
+    game.makeClock();
 }
