@@ -9,7 +9,7 @@ Dragon Flight by Mingyeol Kim, Sujung Lee
  - 노란색 : 250m 이후에서 나옵니다. (100점)
  - 초록색 : 3000m 이후에서 나옵니다. (200점)
  - 빨간색 : 9800m 이후에서 나옵니다. (300점)
- - 보라색 : 17500m 이후에서 나옵니다. (17500점)
+ - 보라색 : 17500m 이후에서 나옵니다. (500점)
  - 폭탄(OO색) : 같은 줄의 모든 용을 제거합니다.
 
 [Meteorite, 운석]
@@ -48,14 +48,15 @@ TODO
 #include <future>
 #include <chrono>
 #include <utility>
+#include <fstream>
+#include <sstream>
 #include <conio.h>
 #include <Windows.h>
 #include <tchar.h>
-#include <fstream>
-#include <sstream>
 using namespace std;
 
 //색깔 정의
+//enum으로 다시 정의할까..?
 #define BLUE 1 //어두움
 #define GREEN 2
 #define BLUEGREEN 3
@@ -77,17 +78,31 @@ using namespace std;
 #define PLAYER 1
 #define BULLET 2
 #define WHITE_DRAGON 3
+#define YELLOW_DRAGON 4
+#define GREEN_DRAGON 5
+#define RED_DRAGON 6
+#define PURPLE_DRAGON 7
 
 //체력 정의
+//직접 드래곤 플라이트를 플레이해서 얻은 결과
 #define H_PLAYER 3
 #define H_BULLET 1
 #define H_WHITE_DRAGON 1
+#define H_YELLOW_DRAGON 2
+#define H_GREEN_DRAGON 3
+#define H_RED_DRAGON 3
+#define H_PURPLE_DRAGON 3
 
 //점수 정의
+#define S_WHITE_DRAGON 50
+#define S_YELLOW_DRAGON 150
+#define S_GREEN_DRAGON 200
+#define S_RED_DRAGON 300
+#define S_PURPLE_DRAGON 500
 
 typedef struct Element{
     int object; //자신의 오브젝트 번호
-    int health = 0; //자신의 체력
+    int health = 0; //자신의 체력   
 } Element;
 
 //콘솔창 제어 함수
@@ -164,8 +179,7 @@ namespace Console{
     }
 
     void getMousexy(xy *mousexy){
-        if (!ReadConsoleInput(
-            hStdin, &irInBuf, 1, &cNumRead))
+        if (!ReadConsoleInput(hStdin, &irInBuf, 1, &cNumRead))
             ErrorExit("ReadConsoleInput");
         
             if (irInBuf.EventType == MOUSE_EVENT){
