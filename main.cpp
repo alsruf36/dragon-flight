@@ -192,6 +192,12 @@ namespace Console{
                 mousexy->y = -1;
             }
     }
+
+    void waitMouse(promise<xy> *p){
+        xy coor;
+        getMousexy(&coor);
+        p->set_value(coor);
+    }
 }
 
 //JSON 컨트롤
@@ -348,36 +354,36 @@ class Game{
         Game(string DataFile); //생성자
 };
 
-Game::Game(string DataFile){
-    this->DataFile = DataFile;
-    this->json = new JSON(this->DataFile);
-    this->printframe = new Frame(2000, 15, 30);
-    this->frame = this->printframe->frame;
+Game::Game(string DataFile){ //생성자 : 메인 함수에서 클래스를 선언할 때 선언하자마자 호출없이 바로 살행되는 함수
+    this->DataFile = DataFile; //자신의 DataFile 멤버 변수에 생성자 인자로 들어온 DataFile을 대입
+    this->json = new JSON(this->DataFile); //JSON 데이터를 조작할 JSON 클래스를 json이라는 이름으로 선언
+    this->printframe = new Frame(2000, 15, 30); //frame 배열을 프린트하고, 관리할 Frame 클래스를 printframe이라는 이름으로 선언
+    this->frame = this->printframe->frame; //game의 frame과 printframe의 frame이 같은 배열을 가르키도록 주소를 복사
 
-    this->FrameClock = 10;
-    this->patchMonsterFrame = 10;
-    this->bulletClock = 1;
+    this->FrameClock = 10; //FrameClock의 배수 클럭마다 프레임이 갱신이 됨
+    this->patchMonsterFrame = 10; //patchMonsterFrame의 배수 프레임마다 몬스터가 맨 윗줄에 패치됨
+    this->bulletClock = 1; //bulletClock의 배수 클럭마다 플레이어 바로 윗줄에 bullet이 생성이 됨
 }
 
-void Game::init(){
-    for(int v=0;v<this->printframe->vertical;v++){
+void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초기화해주는 함수
+    for(int v=0;v<this->printframe->vertical;v++){ 
         for(int h=0;h<this->printframe->horizontal;h++){
-            this->frame[v][h] = 0;
+            this->frame[v][h] = 0; //frame 배열의 모든 원소를 0으로 초기화한다.
         }
     }
-    this->PlayerHorizontal = this->printframe->horizontal/2;
-    this->frame[this->printframe->vertical-1][this->PlayerHorizontal] = 1;
-    this->t_clock = 0;
-    this->m_clock = 0;
+    this->PlayerHorizontal = this->printframe->horizontal/2; //플레이어의 초기 좌표를 설정함 [맨 밑줄 (가로길이/2)번째 칸을 지정]
+    this->frame[this->printframe->vertical-1][this->PlayerHorizontal] = PLAYER; //PlayerHorizontal 칸을 PLAYER로 지정
+    this->t_clock = 0; //거리를 재는 단위 (작은 단위)
+    this->m_clock = 0; //거리르 재는 단위 (큰 단위)
     
-    Console::windowSize(this->printframe->horizontal + 150, this->printframe->vertical + 10);
-    Console::cls();
-    Console::cursorVisible(false);
-    this->printframe->printLogo(this->printframe->horizontal, 0);
-    Console::useMouse(true);
+    Console::windowSize(this->printframe->horizontal + 150, this->printframe->vertical + 10); //윈도우 사이즈를 바꿈
+    Console::cls(); //화면을 초기화
+    Console::cursorVisible(false); //커서를 보이지 않게 함
+    this->printframe->printLogo(this->printframe->horizontal, 0); //지정된 위치에 로고를 프린트
+    Console::useMouse(true); //마우스 사용을 선언함
 }
 
-int Game::getKEY(){
+int Game::getKEY(){ //Depreciated
     int key = 0;
     while(1) {
         if(kbhit()) {
@@ -396,12 +402,6 @@ int Game::getKEY(){
 
 int Game::streamKEY(int key){ // 1==오른쪽, 2==왼쪽, 3==위, 4==아래
     printf("%d\n", key);
-}
-
-void waitMouse(promise<Console::xy> *p){
-    Console::xy coor;
-    Console::getMousexy(&coor);
-    p->set_value(coor);
 }
 
 /*
@@ -424,7 +424,7 @@ void Game::makeClockFrame(){
     while(1){
         promise<Console::xy> p;
         future<Console::xy> coor = p.get_future();
-        thread t(waitMouse, &p);
+        thread t(Console::waitMouse, &p);
         Console::xy xy;
         while (gameStatus) {
             future_status status = coor.wait_for(std::chrono::milliseconds((int)(this->printframe->interval * 1000)));
