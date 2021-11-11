@@ -8,7 +8,6 @@ Dragon Flight by Mingyeol Kim, Sujung Lee
  - 흰색 : 0m 이후에서 나옵니다. (50점)
  - 노란색 : 250m 이후에서 나옵니다. (100점)
  - 초록색 : 3000m 이후에서 나옵니다. (200점)
- - 파란색 : 6000m 이후에서 나옵니다. (250점) -> 제거
  - 빨간색 : 9800m 이후에서 나옵니다. (300점)
  - 보라색 : 17500m 이후에서 나옵니다. (17500점)
  - 폭탄(OO색) : 같은 줄의 모든 용을 제거합니다.
@@ -36,6 +35,9 @@ TODO
 -> 몬스터 구현
 -> 수행 제출 빌드 전 헤더 파일 분리
 -> 체력 표시 : 몬스터의 밝기로 판단
+
+-> 몬스터 체력 구현을 위하여 기존 배열을 구조체로 바꾸기
+-> 위와 같이 구현할 시 
 */
 
 //IO 컨트롤
@@ -75,6 +77,18 @@ using namespace std;
 #define PLAYER 1
 #define BULLET 2
 #define WHITE_DRAGON 3
+
+//체력 정의
+#define H_PLAYER 3
+#define H_BULLET 1
+#define H_WHITE_DRAGON 1
+
+//점수 정의
+
+typedef struct Element{
+    int object; //자신의 오브젝트 번호
+    int health = 0; //자신의 체력
+} Element;
 
 //콘솔창 제어 함수
 namespace Console{
