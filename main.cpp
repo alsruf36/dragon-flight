@@ -369,6 +369,8 @@ class Game{
         bool shiftFrame(); //맨 윗줄부터 플레이어 이전 줄을 한 칸 아래로 밂
         void printFrame(); //매 클럭당 출력
         void Over(); //몬스터와 플레이어 충돌시 실행되는 함수
+
+        int score; //플레이어의 점수
         
         int PlayerHealth; //플레이어의 체력
 
@@ -382,9 +384,9 @@ Game::Game(string DataFile){ //생성자 : 메인 함수에서 클래스를 선�
     this->printframe = new Frame(2000, 15, 15); //frame 배열을 프린트하고, 관리할 Frame 클래스를 printframe이라는 이름으로 선언
     this->frame = this->printframe->frame; //game의 frame과 printframe의 frame이 같은 배열을 가르키도록 주소를 복사
 
-    this->FrameClock = 5; //FrameClock의 배수 클럭마다 프레임이 갱신이 됨
+    this->FrameClock = 1; //FrameClock의 배수 클럭마다 프레임이 갱신이 됨
     this->patchMonsterFrame = 4; //patchMonsterFrame의 배수 프레임마다 몬스터가 맨 윗줄에 패치됨
-    this->bulletClock = 15; //bulletClock의 배수 클럭마다 플레이어 바로 윗줄에 bullet이 생성이 됨
+    this->bulletClock = 3; //bulletClock의 배수 클럭마다 플레이어 바로 윗줄에 bullet이 생성이 됨
 }
 
 void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초기화해주는 함수
@@ -403,6 +405,7 @@ void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초�
     this->frame[this->printframe->vertical-1][this->PlayerHorizontal].health = this->PlayerHealth; //플레이어의 체력을 설정
     this->t_clock = 0; //거리를 재는 단위 (작은 단위)
     this->m_clock = 0; //거리를 재는 단위 (큰 단위)
+    this->score = 0; 
     
     Console::windowSize(this->printframe->horizontal + 350, this->printframe->vertical + 150); //윈도우 사이즈를 바꿈
     Console::cls(); //화면을 초기화
@@ -488,11 +491,11 @@ void Game::makeClock(){
 2. frame 밑에 t_clock과 m_clock을 출력한다.
 */
 void Game::printFrame(){
-    //if(this->t_clock % this->printframe->SkipFramePer == 0) this->printframe->print();
-    this->printframe->printDEBUG();
-    //Console::gotoxy(0, this->printframe->vertical+2);
-    //printf("체력 : [%d 개 남음] / 거리 : [%dm]   \n", this->PlayerHealth, this->t_clock * this->m_clock);
-    //printf("[%d]페이즈 / 현재 페이즈 [%.1lf%] 진행    \n", this->m_clock + 1, ((double)this->t_clock/(double)this->printframe->fps)*(double)100);
+    if(this->t_clock % this->printframe->SkipFramePer == 0) this->printframe->print();
+    //this->printframe->printDEBUG();
+    Console::gotoxy(0, this->printframe->vertical+2);
+    printf("체력 : [%d 개 남음] / 거리 : [%dm]   \n", this->PlayerHealth, this->t_clock * (this->m_clock + 1));
+    printf("[%d]페이즈 / 현재 페이즈 [%.1lf%] 진행    \n", this->m_clock + 1, ((double)this->t_clock/(double)this->printframe->fps)*(double)100);
 }
 
 /*
@@ -604,7 +607,7 @@ bool Game::shiftFrame(){
         }
     }
 
-    if(this->t_clock % (this->FrameClock - this->m_clock) == 0){ //만약 클럭이 (FrameClock - m_clock)의 배수이면
+    if(this->t_clock % this->FrameClock == 0){ //만약 클럭이 (FrameClock - m_clock)의 배수이면
         for(int v=this->printframe->vertical-2;v>=0;v--){
             for(int h=0;h<this->printframe->horizontal;h++){
                 if(v == this->printframe->vertical-2){ //만약 현재 행이 (마지막 행 - 1)의 이라면
