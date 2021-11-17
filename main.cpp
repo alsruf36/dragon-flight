@@ -272,58 +272,6 @@ namespace Console{
     }
 }
 
-//JSON 컨트롤
-#include "rapidjson/document.h"
-#include "rapidjson/writer.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/filereadstream.h"
-#include "rapidjson/filewritestream.h"
-using namespace rapidjson;
-
-class JSON{
-    public:
-        Document d;
-
-        string DataFile; //파일 이름
-        JSON(string Datafile); //생성자
-        void load();
-        void save();
-};
-
-JSON::JSON(string DataFile){
-    this->DataFile = DataFile;
-    this->load();
-}
-
-void JSON::load(){
-    FILE* fp;
-    fp = fopen(&this->DataFile[0], "rb+");
-
-    if(fp == NULL){
-        cout << this->DataFile << " 로드에 오류가 생겼습니다." << endl;
-        return;
-    }
- 
-    char readBuffer[65536];
-    FileReadStream is(fp, readBuffer, sizeof(readBuffer));
-    this->d.ParseStream(is);
-    
-    fclose(fp);
-}
-
-void JSON::save(){
-    FILE* fp;
-    fp = fopen(&this->DataFile[0], "wb+");
-
-    char writeBuffer[65536];
-    FileWriteStream os(fp, writeBuffer, sizeof(writeBuffer));
-    
-    Writer<FileWriteStream> writer(os);
-    this->d.Accept(writer);
-    
-    fclose(fp);
-}
-
 //=================================== 메인 코드 ===================================
 
 class Frame{
@@ -339,6 +287,7 @@ class Frame{
         int consolehorizontal; //콘솔창 가로
         int consolevertical; //콘솔창 세로
 
+        void printMain(); //메인 화면 프린트
         void printPause(); //일시정지 화면 프린트
         void printLogo(int x, int y); //로고 프린트
         int LogoVertical = 3; //로고 세로 길이
@@ -416,6 +365,41 @@ void Frame::printLogo(int x, int y){
     }
 }
 
+void Frame::printMain(){
+    Console::gotoxy(0, 0);
+    printf("┌");
+    for(int i=0;i<this->consolehorizontal - 3;i++) printf("─");
+    printf("┐");
+
+    for(int i=0;i<this->consolevertical - 2;i++){
+        Console::gotoxy(0, i+1);
+        printf("│");
+        for(int j=0;j<this->consolehorizontal - 3;j++) printf(" ");
+        printf("│");
+    }
+
+    Console::gotoxy(0, this->consolevertical - 1);
+    printf("└");
+    for(int i=0;i<this->consolehorizontal - 3;i++) printf("─");
+    printf("┘");
+
+    int nowline = 0;
+    string line;
+    fstream logo;
+    logo.open("MAINLOGO", fstream::in);
+    while (getline(logo, line))
+    {
+        Console::gotoxy((this->consolehorizontal - 42) / 4, 4 + nowline++);
+        cout << line << endl;
+    }
+
+    Console::gotoxy((this->consolehorizontal - 14) / 4, 15);
+    printf("시작하기 [W]");
+
+    Console::gotoxy((this->consolehorizontal - 14) / 4, 19);
+    printf("종료하기 [Q]");
+}
+
 void Frame::printPause(){
     Console::gotoxy(0, 0);
     printf("┌");
@@ -433,13 +417,29 @@ void Frame::printPause(){
     printf("└");
     for(int i=0;i<this->consolehorizontal - 3;i++) printf("─");
     printf("┘");
+
+    int nowline = 0;
+    string line;
+    fstream logo;
+    logo.open("PAUSELOGO", fstream::in);
+    while (getline(logo, line))
+    {
+        Console::gotoxy((this->consolehorizontal - 42) / 4, 4 + nowline++);
+        cout << line << endl;
+    }
+
+    Console::gotoxy((this->consolehorizontal - 14) / 4, 15);
+    printf("종료하기 [Q]");
+
+    Console::gotoxy((this->consolehorizontal - 14) / 4, 19);
+    printf("복귀하기 [W]");
+
+    Console::gotoxy((this->consolehorizontal - 14) / 4, 23);
+    printf("다시시작 [R]");
 }
 
 class Game{
     public:
-        JSON *json; //JSON 클래스 포인터
-        string DataFile; //json 파일명
-
         Frame *printframe; //Frame 클래스 포인터
         Element **frame; //frame 포인터
         int distance; //현재 거리
@@ -465,12 +465,10 @@ class Game{
         int PlayerHealth; //플레이어의 체력
 
         void init(); //새 게임 시작 전 초기화자
-        Game(string DataFile); //생성자
+        Game(); //생성자
 };
 
-Game::Game(string DataFile){ //생성자 : 메인 함수에서 클래스를 선언할 때 선언하자마자 호출없이 바로 살행되는 함수
-    this->DataFile = DataFile; //자신의 DataFile 멤버 변수에 생성자 인자로 들어온 DataFile을 대입
-    this->json = new JSON(this->DataFile); //JSON 데이터를 조작할 JSON 클래스를 json이라는 이름으로 선언
+Game::Game(){ //생성자 : 메인 함수에서 클래스를 선언할 때 선언하자마자 호출없이 바로 살행되는 함수
     this->printframe = new Frame(2000, 15, 15); //frame 배열을 프린트하고, 관리할 Frame 클래스를 printframe이라는 이름으로 선언
     this->frame = this->printframe->frame; //game의 frame과 printframe의 frame이 같은 배열을 가르키도록 주소를 복사
 
@@ -867,9 +865,7 @@ void Game::Over(){
 다음의 알고리즘을 시행합니다.
 */
 int main(){
-    Game game("data.json");
-//    Value &v = game.json->d["user"];
-//   cout << v.GetString() << endl;
+    Game game;
 
     game.init();
     game.makeClock();
