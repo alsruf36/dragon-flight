@@ -99,6 +99,8 @@ VOID KeyEventProc(KEY_EVENT_RECORD ker)
 {
     printf("Key event: ");
 
+    printf("%d", ker.uChar);
+
     if (ker.bKeyDown)
         printf("key pressed\n");
     else printf("key released\n");

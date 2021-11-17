@@ -4,6 +4,24 @@ Dragon Flight by Mingyeol Kim, Sujung Lee
 ===! 주의 !===
 이 파일은 UTF-8로 인코딩 되어있어 DEV-C++로 열 수 없습니다.
 컴파일 시에는 C++11 이상을 사용하여야 합니다.
+다음의 옵션으로 컴파일 하는것을 추천합니다.
+
+    "command": "g++",
+    "args": [
+        "-static-libgcc",
+        "-static-libstdc++",
+        "-Wl,-Bstatic",
+        "-lstdc++",
+        "-lpthread",
+        "-Wl,-Bstatic,--whole-archive",
+        "-lwinpthread",
+        "-Wl,-Bdynamic",
+        "-Wl,--no-whole-archive",
+        "-g",
+        "${file}",
+        "-o",
+        "${fileDirname}/${fileBasenameNoExtension}.exe"
+    ]
 
 === 게임 설명 ===
 이 게임은 라인 게임즈의 드레곤 플라이트를 콘솔 버전으로 모작한 게임입니다.
@@ -36,12 +54,20 @@ class Game
 -> 매 프레임 마다 게임 구성 요소(몬스터, 운석, 플레이어와의 충돌 등)를 움직이는 연산을 합니다.
 
 TODO
--> 몬스터 구현
+-> 몬스터 구현 -> 완료
 -> 수행 제출 빌드 전 헤더 파일 분리
 -> 체력 표시 : 몬스터의 밝기로 판단
 
--> 몬스터 체력 구현을 위하여 기존 배열을 구조체로 바꾸기
+-> 몬스터 체력 구현을 위하여 기존 배열을 구조체로 바꾸기 -> 완료
 -> 위와 같이 구현할 시 
+
+-> 몬스터에 따라 점수 추가하기
+-> 몬스터 체력 색깔로 출력(배경색)
+-> 15 by 5 배열로 구성 or 출력되는 몬스터의 좌측 좌표를 기준으로 출력
+-> 일시정지 기능 구현
+-> 게임 오버 구현
+
+-> 메인 화면 만들기
 */
 
 //IO 컨트롤
@@ -51,16 +77,16 @@ TODO
 #include <thread>
 #include <future>
 #include <chrono>
-#include <utility>
 #include <fstream>
 #include <sstream>
+#include <stdlib.h>
+#include <time.h>
 #include <conio.h>
 #include <Windows.h>
 #include <tchar.h>
 using namespace std;
 
 //색깔 정의
-//enum으로 다시 정의할까..?
 #define BLUE 1 //어두움
 #define GREEN 2
 #define BLUEGREEN 3
@@ -88,15 +114,14 @@ using namespace std;
 #define PURPLE_DRAGON 7
 
 //체력 정의
-//직접 드래곤 플라이트를 플레이해서 얻은 결과
 #define H_NONE 0
 #define H_PLAYER 3
 #define H_BULLET 3
-#define H_WHITE_DRAGON 3
+#define H_WHITE_DRAGON 1
 #define H_YELLOW_DRAGON 2
 #define H_GREEN_DRAGON 3
-#define H_RED_DRAGON 3
-#define H_PURPLE_DRAGON 3
+#define H_RED_DRAGON 4
+#define H_PURPLE_DRAGON 5
 
 //점수 정의
 #define S_WHITE_DRAGON 50
@@ -104,6 +129,13 @@ using namespace std;
 #define S_GREEN_DRAGON 200
 #define S_RED_DRAGON 300
 #define S_PURPLE_DRAGON 500
+
+//이벤트 정의
+#define E_KEY_EVENT 1
+#define E_MOUSE_EVENT 2
+#define PAUSE_KEY 119
+#define E_MOUSE_LEFT 1
+#define E_MOUSE_RIGHT 2
 
 typedef struct Element{
     int object; //자신의 오브젝트 번호
@@ -115,7 +147,7 @@ typedef struct Element{
 namespace Console{
     HANDLE hStdin;
     DWORD fdwSaveOldMode;
-    DWORD cNumRead, fdwMode, ii;
+    DWORD cNumRead, fdwMode, i;
     INPUT_RECORD irInBuf;
     int counter = 0;
 
@@ -123,6 +155,15 @@ namespace Console{
         int x;
         int y;
     } xy;
+
+    typedef struct eventStruct{
+        int eventType;
+        int key;
+        bool keyPressed;
+        bool Clicked;
+        bool ClickKey;
+        xy coordinate;
+    } eventStruct;
 
     void init(){
         system("chcp 65001");
@@ -183,26 +224,50 @@ namespace Console{
             SetConsoleMode(hStdin, fdwSaveOldMode);
         }
     }
-
-    void getMousexy(xy *mousexy){
+    
+    void getEvent(eventStruct* event){
         if (!ReadConsoleInput(hStdin, &irInBuf, 1, &cNumRead))
             ErrorExit("ReadConsoleInput");
         
-            if (irInBuf.EventType == MOUSE_EVENT){
+        switch (irInBuf.EventType){
+            case KEY_EVENT: {// keyboard 인풋일때
+                char keyStr[5];
+                sprintf(keyStr, "%d", irInBuf.Event.KeyEvent.uChar);
+                event->key = atoi(keyStr);
+                event->keyPressed = irInBuf.Event.KeyEvent.bKeyDown;
+                event->eventType = E_KEY_EVENT;
+                break;
+            }
+
+            case MOUSE_EVENT: {// mouse 인풋일때
+                if(irInBuf.Event.MouseEvent.dwEventFlags == 0){
+                    if (irInBuf.Event.MouseEvent.dwButtonState == FROM_LEFT_1ST_BUTTON_PRESSED){
+                        event->Clicked = true;
+                        event->ClickKey = E_MOUSE_LEFT;
+                    }
+                    else if (irInBuf.Event.MouseEvent.dwButtonState == RIGHTMOST_BUTTON_PRESSED){
+                        event->Clicked = true;
+                        event->ClickKey = E_MOUSE_RIGHT;
+                    }
+                }
+
                 int mouse_x = irInBuf.Event.MouseEvent.dwMousePosition.X;
                 int mouse_y = irInBuf.Event.MouseEvent.dwMousePosition.Y;
-                mousexy->x = mouse_x;
-                mousexy->y = mouse_y;
-            }else{
-                mousexy->x = -1;
-                mousexy->y = -1;
+                event->eventType = E_MOUSE_EVENT;
+                event->coordinate.x = mouse_x;
+                event->coordinate.y = mouse_y;
+                break;
             }
+        }
     }
 
-    void waitMouse(promise<xy> *p){
-        xy coor;
-        getMousexy(&coor);
-        p->set_value(coor);
+    void waitEvent(promise<eventStruct> *p){
+        eventStruct event;
+        event.eventType = NONE;
+        while(event.eventType == NONE){
+            getEvent(&event);
+        }
+        p->set_value(event);
     }
 }
 
@@ -269,7 +334,6 @@ class Frame{
         int vertical; //세로
         Element **frame; //frame 포인터
         double interval; //fps에 따른 frame갱신 시간
-        char *Dprefix;
 
         void printLogo(int x, int y); //로고 프린트
         int LogoVertical = 3; //로고 세로 길이
@@ -291,8 +355,6 @@ Frame::Frame(int fps, int horizontal, int vertical){
     }
 
     this->SkipFramePer = 1;
-
-    this->Dprefix = "█";
     Console::init();
 }
 
@@ -352,15 +414,16 @@ class Game{
 
         Frame *printframe; //Frame 클래스 포인터
         Element **frame; //frame 포인터
-        int t_clock; //현재 clock(0 ~ this->printframe->fps)
-        int m_clock; //현재 clock(t_clock이 초기화 된 횟수)
+        int distance; //현재 거리
+        int level; //현재 레벨(levelCriteria의 배수마다 1 증가)
+        int levelCriteria; //한 레벨을 올리는 데의 기준
 
         int getKEY(); //키 버퍼 감지 / this->printframe->interval에 따른 sleep
-        int streamKEY(int key); //감지된 키 스트림(중계)
+        int pauseGame(); //게임을 중지할 때 실행되는 함수
 
         int PlayerHorizontal; //플레이어의 가로 위치
-        int FrameClock; //프레임을 갱신할 클럭
-        int patchMonsterFrame; //몬스터를 패치할 프레임 배수 
+        int FrameClock; //프레임을 갱신할 클럭 배수
+        int patchMonsterClock; //몬스터를 패치할 클럭 배수 
         int bulletClock; //총알을 패치할 클럭 배수
         void makeClock(); //연산 클럭을 생성함
         bool updateFrame(); //배열을 조작함
@@ -370,8 +433,8 @@ class Game{
         void printFrame(); //매 클럭당 출력
         void Over(); //몬스터와 플레이어 충돌시 실행되는 함수
 
+        Element randomMonster(int from, int to);
         int score; //플레이어의 점수
-        
         int PlayerHealth; //플레이어의 체력
 
         void init(); //새 게임 시작 전 초기화자
@@ -384,9 +447,10 @@ Game::Game(string DataFile){ //생성자 : 메인 함수에서 클래스를 선�
     this->printframe = new Frame(2000, 15, 15); //frame 배열을 프린트하고, 관리할 Frame 클래스를 printframe이라는 이름으로 선언
     this->frame = this->printframe->frame; //game의 frame과 printframe의 frame이 같은 배열을 가르키도록 주소를 복사
 
-    this->FrameClock = 1; //FrameClock의 배수 클럭마다 프레임이 갱신이 됨
-    this->patchMonsterFrame = 4; //patchMonsterFrame의 배수 프레임마다 몬스터가 맨 윗줄에 패치됨
-    this->bulletClock = 3; //bulletClock의 배수 클럭마다 플레이어 바로 윗줄에 bullet이 생성이 됨
+    this->levelCriteria = 500; //한 레벨을 올리는 데의 기준
+    this->FrameClock = 10; //FrameClock의 배수 클럭마다 프레임이 갱신이 됨
+    this->patchMonsterClock = 40; //patchMonsterClock의 배수 클럭마다 몬스터가 맨 윗줄에 패치됨
+    this->bulletClock = 10; //bulletClock의 배수 클럭마다 플레이어 바로 윗줄에 bullet이 생성이 됨
 }
 
 void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초기화해주는 함수
@@ -403,11 +467,12 @@ void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초�
     this->PlayerHorizontal = this->printframe->horizontal/2; //플레이어의 초기 좌표를 설정함 [맨 밑줄 (가로길이/2)번째 칸을 지정]
     this->frame[this->printframe->vertical-1][this->PlayerHorizontal].object = PLAYER; //PlayerHorizontal 칸을 PLAYER로 지정
     this->frame[this->printframe->vertical-1][this->PlayerHorizontal].health = this->PlayerHealth; //플레이어의 체력을 설정
-    this->t_clock = 0; //거리를 재는 단위 (작은 단위)
-    this->m_clock = 0; //거리를 재는 단위 (큰 단위)
-    this->score = 0; 
+    this->distance = 0; //현재 거리
+    this->level = 0; //현재 난이도
+    this->score = 0; //점수
     
-    Console::windowSize(this->printframe->horizontal + 350, this->printframe->vertical + 150); //윈도우 사이즈를 바꿈
+    srand(time(NULL)); //난수 시드 설정
+    Console::windowSize(this->printframe->horizontal + 150, this->printframe->vertical + 15); //윈도우 사이즈를 바꿈
     Console::cls(); //화면을 초기화
     Console::cursorVisible(false); //커서를 보이지 않게 함
     //this->printframe->printLogo(this->printframe->horizontal, 0); //지정된 위치에 로고를 프린트
@@ -421,26 +486,37 @@ int Game::getKEY(){ //Depreciated
             key = getch();
             if(key == 224 || key == 0){
                 key = getch();
-                if(key == 75) this->streamKEY(2); //왼쪽
-                else if(key == 77) this->streamKEY(1); //오른쪽
-                else if(key == 72) this->streamKEY(3); //위
-                else if (key == 80) this->streamKEY(4); //아래
+                if(key == 75) ; //왼쪽
+                else if(key == 77) ; //오른쪽
+                else if(key == 72) ; //위
+                else if (key == 80) ; //아래
             }
         }
         this->printFrame();
     }
 }
 
-int Game::streamKEY(int key){ // 1==오른쪽, 2==왼쪽, 3==위, 4==아래
-    printf("%d\n", key);
+int Game::pauseGame(){
+    Console::cls();
+    Console::useMouse(true);
+    printf("정지\n");
+    while(1){
+        Console::eventStruct event;
+        Console::getEvent(&event);
+        if(event.eventType == E_KEY_EVENT){
+            if(event.keyPressed == true && event.key == PAUSE_KEY){
+                break;
+            }
+        }
+    }
 }
 
 /*
 [Game::makeClock()]
 다음의 알고리즘을 반복합니다.
-1. 마우스의 움직임을 감지할 waitMouse() 스레드를 생성한다.
+1. 마우스의 움직임을 감지할 waitEvent() 스레드를 생성한다.
 
-2. 만약 마우스의 움직임이 감지되어 좌표가 반환되면 (2-1) 아니면 (3)
+2. 만약 이벤트가 감지되어 좌표가 반환되면 (2-1) 아니면 (3)
 2-1. patchPlayer() 함수를 이용하여 플레이어의 좌표를 패치한다.
 2-2. 스레드를 다시 join시킨다.
 
@@ -453,26 +529,34 @@ int Game::streamKEY(int key){ // 1==오른쪽, 2==왼쪽, 3==위, 4==아래
 void Game::makeClock(){
     bool gameStatus = true; //gameStatus을 true로 초기화
     while(1){ //게임이 종료될 때 까지 반복
-        promise<Console::xy> p; //p를 받겠다고 약속한다.
-        future<Console::xy> coor = p.get_future(); //coor을 통해 미래에 p를 받겠다고 선언한다.
-        thread t(Console::waitMouse, &p); //waitMouse를 실행해 p에 받겠다는 약속을 하고 t라는 스레드를 생성한다.
-        Console::xy xy; //마우스의 좌표를 받을 변수
+        promise<Console::eventStruct> p; //p를 받겠다고 약속한다.
+        future<Console::eventStruct> coor = p.get_future(); //coor을 통해 미래에 p를 받겠다고 선언한다.
+        thread t(Console::waitEvent, &p); //waitEvent를 실행해 p에 받겠다는 약속을 하고 t라는 스레드를 생성한다.
         while (gameStatus) { //gameStatus가 false가 아니면 계속 반복한다.
+            Console::eventStruct Event; //이벤트를 받을 구조체
             future_status status = coor.wait_for(std::chrono::milliseconds((int)(this->printframe->interval * 1000))); //미래에 받겠다고 한 coor이 완료가 되었는지 interval초 동안 물어본다.
 
-             if(this->t_clock == this->printframe->fps-1){ //만약 t_clock이 (fps-1)과 같다면
-                this->m_clock++; //더 큰 단위인 m_clock을 1 증가시킨다.
-                this->t_clock = 0; //t_clock은 0으로 초기화 한다.
-            }else this->t_clock++; //아니라면 t_clock을 1 증가시킨다.
-
+             if(this->distance % this->levelCriteria == 0){ //만약 distance가 levelCriteria의 배수라면
+                this->level++; //level을 1 증가시킨다.
+            }
+            this->distance++; //distance을 1 증가시킨다.
+             
             if (status == future_status::timeout){ //만약 물어본지 1초가 지나 timeout되었다면(시간초과 되었다면)
                 gameStatus = this->updateFrame(); //프레임을 업데이트한다.
                 this->printFrame(); //프레임을 프린트한다.
                 if(gameStatus == false) break; //만약 프레임을 업데이트 할 때 false가 반환이 되었으면 while문을 나간다.
             }
             else if (status == future_status::ready){ //만약 물어봤을때 함수의 반환이 준비가 되었다면
-                xy = coor.get(); //미래에 받겠다고 한 정보를 반환받는다.
-                this->patchPlayer(xy); //플레이어의 좌표를 패치한다.
+                Event = coor.get(); //미래에 받겠다고 한 정보를 반환받는다.
+
+                if(Event.eventType == E_MOUSE_EVENT){
+                    this->patchPlayer(Event.coordinate);
+                }else if(Event.eventType == E_KEY_EVENT){
+                    if(Event.keyPressed == true && Event.key == PAUSE_KEY){
+                        this->pauseGame();
+                    }
+                }
+
                 this->updateFrame(); //프레임을 업데이트한다.
                 this->printFrame(); //프레임을 출력한다.
                 Console::sleep(this->printframe->interval); //interval초 동안 정지한다.
@@ -488,14 +572,14 @@ void Game::makeClock(){
 [Game::printFrame()]
 다음의 알고리즘을 시행합니다.
 1. 만약 클럭이 SkipFramePer의 배수라면 frame을 출력한다.
-2. frame 밑에 t_clock과 m_clock을 출력한다.
+2. frame 밑에 distance과 levelCriteria을 출력한다.
 */
 void Game::printFrame(){
-    if(this->t_clock % this->printframe->SkipFramePer == 0) this->printframe->print();
+    if(this->distance % this->printframe->SkipFramePer == 0) this->printframe->print();
     //this->printframe->printDEBUG();
     Console::gotoxy(0, this->printframe->vertical+2);
-    printf("체력 : [%d 개 남음] / 거리 : [%dm]   \n", this->PlayerHealth, this->t_clock * (this->m_clock + 1));
-    printf("[%d]페이즈 / 현재 페이즈 [%.1lf%] 진행    \n", this->m_clock + 1, ((double)this->t_clock/(double)this->printframe->fps)*(double)100);
+    printf("체력 : [%d 개 남음] / 거리 : [%dm]   \n", this->PlayerHealth, this->distance);
+    printf("[%d]페이즈 / 현재 페이즈 [%.1lf%] 진행    \n", this->level + 1, ((double)(this->distance % this->levelCriteria)/(double)this->levelCriteria)*(double)100);
 }
 
 /*
@@ -507,12 +591,12 @@ void Game::printFrame(){
 4. true를 반환한다.
 */
 bool Game::updateFrame(){
-    if(this->t_clock % this->bulletClock == 0){
+    if(this->distance % this->bulletClock == 0){
         this->frame[this->printframe->vertical-2][this->PlayerHorizontal].object = BULLET;
         this->frame[this->printframe->vertical-2][this->PlayerHorizontal].health = H_BULLET;
     }
     if(this->shiftFrame() == false) return false;
-    if(this->t_clock % this->FrameClock == 0) this->patchMonster();
+    if(this->distance % this->FrameClock == 0) this->patchMonster();
     return true;
 }
 
@@ -523,24 +607,113 @@ bool Game::updateFrame(){
 */
 void Game::patchPlayer(Console::xy coor){
     if(coor.x > 0 && coor.x < this->printframe->horizontal+1){
+        Console::gotoxy(0, this->printframe->vertical+5);
+        printf("                                         ");
         this->frame[this->printframe->vertical-1][this->PlayerHorizontal].object = NONE;
         this->frame[this->printframe->vertical-1][this->PlayerHorizontal].health = H_NONE;
         this->PlayerHorizontal = coor.x-1;
         this->frame[this->printframe->vertical-1][this->PlayerHorizontal].object = PLAYER;
         this->frame[this->printframe->vertical-1][this->PlayerHorizontal].health = this->PlayerHealth;
+    }else{
+        Console::gotoxy(0, this->printframe->vertical+5);
+        Console::setColor(12, 0);
+        printf("마우스를 플레이 범위 안으로 옮겨주세요!!");
+        Console::setColor(15, 0);
     }
+}
+
+/*
+[Game::randomMonster()]
+다음의 알고리즘을 시행합니다.
+1. 랜덤으로 생성된 값을 (to - from)으로 나눈 나머지를 구한다.
+2. form에 [1]에서 구한 값을 더하면 반환할 몬스터의 번호가 나온다.
+3. [2]에 맞도록 switch-case문을 써서 반환 값을 설정한다.
+*/
+Element Game::randomMonster(int from, int to){
+    Element tmp;
+    int target = from + rand() % (to - from + 1);
+
+    switch(target){
+        case WHITE_DRAGON:
+            tmp.object = WHITE_DRAGON;
+            tmp.health = H_WHITE_DRAGON;
+            break;
+        
+        case YELLOW_DRAGON:
+            tmp.object = YELLOW_DRAGON;
+            tmp.health = H_YELLOW_DRAGON;
+            break;
+
+        case GREEN_DRAGON:
+            tmp.object = GREEN_DRAGON;
+            tmp.health = H_GREEN_DRAGON;
+            break;
+
+        case RED_DRAGON:
+            tmp.object = RED_DRAGON;
+            tmp.health = H_RED_DRAGON;
+            break;
+
+        case PURPLE_DRAGON:
+            tmp.object = PURPLE_DRAGON;
+            tmp.health = H_PURPLE_DRAGON;
+            break;
+
+        default:
+            tmp.object = PURPLE_DRAGON;
+            tmp.health = H_PURPLE_DRAGON;
+            break;
+    }
+
+    return tmp;
 }
 
 /*
 [Game::patchMonster()]
 다음의 알고리즘을 시행합니다.
-1. 만약 프레임이 patchMonsterFrame의 배수이면 frame의 맨 윗줄에 몬스터를 패치한다.
+1. 만약 클럭이 patchMonsterClock의 배수이면 frame의 맨 윗줄에 몬스터를 패치한다.
 */
 void Game::patchMonster(){
-    if(this->t_clock % (this->FrameClock * this->patchMonsterFrame) == 0){
+    if(this->distance % patchMonsterClock == 0){
         for(int h=0;h<this->printframe->horizontal;h++){
-            this->frame[0][h].object = WHITE_DRAGON;
-            this->frame[0][h].health = H_WHITE_DRAGON;
+            Element tmp;
+
+            switch(this->level){
+                case 0:
+                    tmp = this->randomMonster(WHITE_DRAGON, WHITE_DRAGON);
+                    break;
+
+                case 1:
+                    tmp = this->randomMonster(WHITE_DRAGON, YELLOW_DRAGON);
+                    break;
+                
+                case 2:
+                    tmp = this->randomMonster(WHITE_DRAGON, GREEN_DRAGON);
+                    break;
+
+                case 3:
+                    tmp = this->randomMonster(YELLOW_DRAGON, RED_DRAGON);
+                    break;
+
+                case 4:
+                    tmp = this->randomMonster(GREEN_DRAGON, PURPLE_DRAGON);
+                    break;
+
+                case 5:
+                    tmp = this->randomMonster(RED_DRAGON, PURPLE_DRAGON);
+                    break;
+
+                case 6:
+                    tmp = this->randomMonster(PURPLE_DRAGON, PURPLE_DRAGON);
+                    break;
+
+                default:
+                    tmp = this->randomMonster(PURPLE_DRAGON, PURPLE_DRAGON);
+                    break;
+            }
+
+            this->frame[0][h].object = tmp.object;
+            this->frame[0][h].health = tmp.health;
         }
     }
 }
@@ -554,12 +727,12 @@ void Game::patchMonster(){
 */
 bool Game::shiftFrame(){
     for(int h=0;h<this->printframe->horizontal;h++){ //bullet remove (bullet이 첫 번째 줄에 도달했을 떄)
-        if(this->frame[0][h].back->object == BULLET){
-            this->frame[0][h].back->object = NONE;
+        if(this->frame[0][h].back->object == BULLET){ //만약 오브젝트 뒤쪽에 또 다른 오브젝트가 있으면
+            this->frame[0][h].back->object = NONE; //오브젝트를 삭제한다.
             this->frame[0][h].back->health = H_NONE;
         }
-        if(this->frame[0][h].object == BULLET){
-            this->frame[0][h].object = NONE;
+        if(this->frame[0][h].object == BULLET){ //만약 오브젝트가 bullet이면
+            this->frame[0][h].object = NONE; //오브젝트를 삭제한다.
             this->frame[0][h].health = H_NONE;
         }
     }
@@ -607,7 +780,7 @@ bool Game::shiftFrame(){
         }
     }
 
-    if(this->t_clock % this->FrameClock == 0){ //만약 클럭이 (FrameClock - m_clock)의 배수이면
+    if(this->distance % this->FrameClock == 0){ //만약 클럭이 (FrameClock - levelCriteria)의 배수이면
         for(int v=this->printframe->vertical-2;v>=0;v--){
             for(int h=0;h<this->printframe->horizontal;h++){
                 if(v == this->printframe->vertical-2){ //만약 현재 행이 (마지막 행 - 1)의 이라면
@@ -625,6 +798,7 @@ bool Game::shiftFrame(){
                     this->frame[v][h].health = H_NONE;
                     continue; //이줄 밑의 코드를 실행하지 않고 바로 다음 반복문을 실행한다.
                 }
+
                 if(this->frame[v][h].object == BULLET){ //만약 현재 오브젝트가 bullet이면
                     continue; //이 밑의 코드를 실행하지 않고 바로 다음 반복문을 실행한다. (bullet을 아래 방향으로 shift 하지 않기 위함)
                 }
