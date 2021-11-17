@@ -87,7 +87,8 @@ TODO
 using namespace std;
 
 //색깔 정의
-#define BLUE 1 //어두움
+#define BLACK 0 //어두움
+#define BLUE 1
 #define GREEN 2
 #define BLUEGREEN 3
 #define RED 4
@@ -335,6 +336,10 @@ class Frame{
         Element **frame; //frame 포인터
         double interval; //fps에 따른 frame갱신 시간
 
+        int consolehorizontal; //콘솔창 가로
+        int consolevertical; //콘솔창 세로
+
+        void printPause(); //일시정지 화면 프린트
         void printLogo(int x, int y); //로고 프린트
         int LogoVertical = 3; //로고 세로 길이
 
@@ -364,16 +369,32 @@ Frame::Frame(int fps, int horizontal, int vertical){
 */
 void Frame::print(){
     Console::gotoxy(0, 0);
+    Console::setColor(B_WHITE, BLACK);
     printf("┌");
     for(int v=0;v<this->horizontal;v++) printf("─");
     printf("┐\n");
 
     for(int v=0;v<this->vertical;v++){
+        Console::setColor(B_WHITE, BLACK);
         printf("│");
         for(int h=0;h<this->horizontal;h++){
-            if(this->frame[v][h].object != 0)
+            if(this->frame[v][h].object == NONE){
+                Console::setColor(B_WHITE, BLACK);
+                printf(" ");
+            }
+            else if(this->frame[v][h].object <= BULLET){
+                Console::setColor(B_WHITE, BLACK);
                 printf("%d", this->frame[v][h].object);
-            else printf(" ");
+            }
+            else if(this->frame[v][h].object > BULLET){
+                if(this->frame[v][h].object == WHITE_DRAGON) Console::setColor(BLACK, B_WHITE);
+                else if(this->frame[v][h].object == YELLOW_DRAGON) Console::setColor(BLACK, B_YELLOW);
+                else if(this->frame[v][h].object == GREEN_DRAGON) Console::setColor(BLACK, B_GREEN);
+                else if(this->frame[v][h].object == RED_DRAGON) Console::setColor(BLACK, B_RED);
+                else if(this->frame[v][h].object == PURPLE_DRAGON) Console::setColor(BLACK, B_PURPLE);
+                else Console::setColor(B_WHITE, BLACK);
+                printf("%d", this->frame[v][h].health);
+            }
         }
         printf("│\n");
     }
@@ -381,18 +402,6 @@ void Frame::print(){
     printf("└");
     for(int v=0;v<this->horizontal;v++) printf("─");
     printf("┘\n");
-}
-
-void Frame::printDEBUG(){
-    Console::gotoxy(0, 0);
-    for(int v=0;v<this->vertical;v++){
-        for(int h=0;h<this->horizontal;h++){
-            Console::gotoxy(5 * h, 3 * v);
-            printf("│%d %d│", this->frame[v][h].object, this->frame[v][h].back->object);
-            Console::gotoxy(5 * h, 3 * v + 1);
-            printf("│%d %d│", this->frame[v][h].health, this->frame[v][h].back->health);
-        }
-    }
 }
 
 void Frame::printLogo(int x, int y){
@@ -407,6 +416,25 @@ void Frame::printLogo(int x, int y){
     }
 }
 
+void Frame::printPause(){
+    Console::gotoxy(0, 0);
+    printf("┌");
+    for(int i=0;i<this->consolehorizontal - 3;i++) printf("─");
+    printf("┐");
+
+    for(int i=0;i<this->consolevertical - 2;i++){
+        Console::gotoxy(0, i+1);
+        printf("│");
+        for(int j=0;j<this->consolehorizontal - 3;j++) printf(" ");
+        printf("│");
+    }
+
+    Console::gotoxy(0, this->consolevertical - 1);
+    printf("└");
+    for(int i=0;i<this->consolehorizontal - 3;i++) printf("─");
+    printf("┘");
+}
+
 class Game{
     public:
         JSON *json; //JSON 클래스 포인터
@@ -418,8 +446,7 @@ class Game{
         int level; //현재 레벨(levelCriteria의 배수마다 1 증가)
         int levelCriteria; //한 레벨을 올리는 데의 기준
 
-        int getKEY(); //키 버퍼 감지 / this->printframe->interval에 따른 sleep
-        int pauseGame(); //게임을 중지할 때 실행되는 함수
+        int SCREENpause(); //게임을 일시정지할 때 실행되는 함수
 
         int PlayerHorizontal; //플레이어의 가로 위치
         int FrameClock; //프레임을 갱신할 클럭 배수
@@ -451,6 +478,9 @@ Game::Game(string DataFile){ //생성자 : 메인 함수에서 클래스를 선�
     this->FrameClock = 10; //FrameClock의 배수 클럭마다 프레임이 갱신이 됨
     this->patchMonsterClock = 40; //patchMonsterClock의 배수 클럭마다 몬스터가 맨 윗줄에 패치됨
     this->bulletClock = 10; //bulletClock의 배수 클럭마다 플레이어 바로 윗줄에 bullet이 생성이 됨
+
+    this->printframe->consolevertical = this->printframe->vertical + 15;
+    this->printframe->consolehorizontal = this->printframe->horizontal + 150;
 }
 
 void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초기화해주는 함수
@@ -472,43 +502,11 @@ void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초�
     this->score = 0; //점수
     
     srand(time(NULL)); //난수 시드 설정
-    Console::windowSize(this->printframe->horizontal + 150, this->printframe->vertical + 15); //윈도우 사이즈를 바꿈
+    Console::windowSize(this->printframe->consolehorizontal, this->printframe->consolevertical); //윈도우 사이즈를 바꿈
     Console::cls(); //화면을 초기화
     Console::cursorVisible(false); //커서를 보이지 않게 함
-    //this->printframe->printLogo(this->printframe->horizontal, 0); //지정된 위치에 로고를 프린트
+    this->printframe->printLogo(this->printframe->horizontal + 5, 0); //지정된 위치에 로고를 프린트
     Console::useMouse(true); //마우스 사용을 선언함
-}
-
-int Game::getKEY(){ //Depreciated
-    int key = 0;
-    while(1) {
-        if(kbhit()) {
-            key = getch();
-            if(key == 224 || key == 0){
-                key = getch();
-                if(key == 75) ; //왼쪽
-                else if(key == 77) ; //오른쪽
-                else if(key == 72) ; //위
-                else if (key == 80) ; //아래
-            }
-        }
-        this->printFrame();
-    }
-}
-
-int Game::pauseGame(){
-    Console::cls();
-    Console::useMouse(true);
-    printf("정지\n");
-    while(1){
-        Console::eventStruct event;
-        Console::getEvent(&event);
-        if(event.eventType == E_KEY_EVENT){
-            if(event.keyPressed == true && event.key == PAUSE_KEY){
-                break;
-            }
-        }
-    }
 }
 
 /*
@@ -553,7 +551,7 @@ void Game::makeClock(){
                     this->patchPlayer(Event.coordinate);
                 }else if(Event.eventType == E_KEY_EVENT){
                     if(Event.keyPressed == true && Event.key == PAUSE_KEY){
-                        this->pauseGame();
+                        this->SCREENpause();
                     }
                 }
 
@@ -838,6 +836,25 @@ bool Game::shiftFrame(){
         }
     }
     return true;
+}
+
+int Game::SCREENpause(){
+    this->printframe->printPause();
+    while(1){
+        Console::eventStruct event;
+        Console::getEvent(&event);
+        if(event.eventType == E_KEY_EVENT){
+            if(event.keyPressed == true && event.key == PAUSE_KEY){
+                break;
+            }
+        }
+    }
+
+    Console::useMouse(false);
+    Console::cls();
+    Console::cursorVisible(false);
+    this->printframe->printLogo(this->printframe->horizontal + 5, 0);
+    Console::useMouse(true);
 }
 
 void Game::Over(){

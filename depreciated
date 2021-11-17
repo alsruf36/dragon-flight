@@ -1,0 +1,18 @@
+int getKEY(); //키 버퍼 감지 / this->printframe->interval에 따른 sleep
+
+int Game::getKEY(){ //Depreciated
+    int key = 0;
+    while(1) {
+        if(kbhit()) {
+            key = getch();
+            if(key == 224 || key == 0){
+                key = getch();
+                if(key == 75) ; //왼쪽
+                else if(key == 77) ; //오른쪽
+                else if(key == 72) ; //위
+                else if (key == 80) ; //아래
+            }
+        }
+        this->printFrame();
+    }
+}
