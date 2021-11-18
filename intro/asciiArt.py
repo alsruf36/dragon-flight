@@ -67,7 +67,7 @@ def resize_image(image, new_width):
     return new_image
 
 def main(img_num):
-    new_image_width = 400
+    new_image_width = 330
     threshold = 110
     negative = True
     file_path = "./intro/" + str(img_num) + ".jpg"

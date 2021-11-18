@@ -537,19 +537,17 @@ void Frame::printGameOver(){
 }
 
 void Frame::printIntro(){
-    Console::windowSize(250, 61);
+    Console::windowSize(166, 47);
     for(int i=1;i<=82;i++){
         int nowline = 0;
         string line;
         fstream logo;
         string filename = "intro/intro_ascii/" + to_string(i) + ".txt";
+        Console::gotoxy(0, 0);
         logo.open(&filename[0], fstream::in);
-        while (getline(logo, line))
-        {
-            Console::gotoxy(0, nowline++);
+        while (getline(logo, line)){
             cout << line << endl;
         }
-        Console::sleep(0.01);
     }
 
     for(int i=82;i>0;i--){
@@ -557,14 +555,24 @@ void Frame::printIntro(){
         string line;
         fstream logo;
         string filename = "intro/intro_ascii/" + to_string(i) + ".txt";
+        Console::gotoxy(0, 0);
         logo.open(&filename[0], fstream::in);
-        while (getline(logo, line))
-        {
-            Console::gotoxy(0, nowline++);
+        while (getline(logo, line)){
             cout << line << endl;
         }
-        Console::sleep(0.01);
     }
+
+    int nowline = 0;
+    string line;
+    fstream logo;
+    logo.open("logo/MAINTAINERLOGO", fstream::in);
+    while (getline(logo, line))
+    {
+        Console::gotoxy((166 - 75) / 4, 47/2 + nowline++);
+        cout << line << endl;
+    }
+
+    Console::sleep(2.5);
 }
 
 class Game{
@@ -1071,8 +1079,7 @@ int main(){
     bool KeepWhile = true;
     Game game;
     Console::cursorVisible(false);
-
-    while(1) game.printframe->printIntro();
+    game.printframe->printIntro();
 
     while(KeepWhile){
         todo = game.SCREENmain();
