@@ -62,9 +62,7 @@ TODO
 -> 위와 같이 구현할 시 
 
 -> 몬스터에 따라 점수 추가하기
--> 몬스터 체력 색깔로 출력(배경색)
 -> 15 by 5 배열로 구성 or 출력되는 몬스터의 좌측 좌표를 기준으로 출력
--> 일시정지 기능 구현
 -> 게임 오버 구현
 
 -> 메인 화면 만들기
@@ -289,11 +287,14 @@ class Frame{
 
         void printMain(); //메인 화면 프린트
         void printPause(); //일시정지 화면 프린트
-        void printLogo(int x, int y); //로고 프린트
+        void printLogo(); //로고 프린트
+        void printScore(int score, int distance, int level, int levelCriteria, int PlayerHealth); //점수 프린트
+        void printScoreframe(); //점수 프레임 프린트
         int LogoVertical = 3; //로고 세로 길이
+        int LeftSpace = 6; //게임 배열 좌측 공간
+        int ScoreboardHeight = 3; //점수 프레임을 프린트할 때 위의 공간
 
         void print();
-        void printDEBUG();
         Frame(int fps, int horizontal, int vertical); //생성자
 };
 
@@ -319,12 +320,15 @@ Frame::Frame(int fps, int horizontal, int vertical){
 void Frame::print(){
     Console::gotoxy(0, 0);
     Console::setColor(B_WHITE, BLACK);
+
+    for(int i=0;i<this->LeftSpace;i++) printf(" ");
     printf("┌");
     for(int v=0;v<this->horizontal;v++) printf("─");
     printf("┐\n");
 
     for(int v=0;v<this->vertical;v++){
         Console::setColor(B_WHITE, BLACK);
+        for(int i=0;i<this->LeftSpace;i++) printf(" ");
         printf("│");
         for(int h=0;h<this->horizontal;h++){
             if(this->frame[v][h].object == NONE){
@@ -345,24 +349,65 @@ void Frame::print(){
                 printf("%d", this->frame[v][h].health);
             }
         }
+        Console::setColor(B_WHITE, BLACK);
         printf("│\n");
     }
 
+    for(int i=0;i<this->LeftSpace;i++) printf(" ");
     printf("└");
     for(int v=0;v<this->horizontal;v++) printf("─");
     printf("┘\n");
 }
 
-void Frame::printLogo(int x, int y){
+void Frame::printLogo(){
     int nowline = 0;
     string line;
     fstream logo;
     logo.open("MAINLOGO", fstream::in);
     while (getline(logo, line))
     {
-        Console::gotoxy(x, y + nowline++);
+        Console::gotoxy(this->consolehorizontal - 150, nowline++);
         cout << line << endl;
     }
+}
+
+void Frame::printScoreframe(){
+    Console::gotoxy(this->horizontal, this->ScoreboardHeight);
+    printf("┌");
+    for(int h=0;h<22;h++) printf("─");
+    printf("┐");
+
+    int v;
+    for(v=0;v<6;v++){
+        Console::gotoxy(this->horizontal, this->ScoreboardHeight + 1 + v);
+        printf("│");
+        for(int h=0;h<22;h++) printf(" ");
+        printf("│");
+    }
+
+    Console::gotoxy(this->horizontal, this->ScoreboardHeight + 1 + v);
+    printf("└");
+    for(int v=0;v<22;v++) printf("─");
+    printf("┘\n");
+}
+
+
+void Frame::printScore(int score, int distance, int level, int levelCriteria, int PlayerHealth){
+    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 2);
+    printf("거리 : %dm", distance);
+
+    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 3);
+    printf("체력 : ");
+    Console::setColor(B_RED, BLACK);
+    for(int i=0;i<PlayerHealth;i++) printf("H ");
+    for(int i=0;i<H_PLAYER - PlayerHealth;i++) printf("  ");
+    Console::setColor(B_WHITE, BLACK);
+
+    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 4);
+    printf("페이즈 : %d번째 ", level + 1);
+
+    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 5);
+    printf("현재 페이즈 [%.1lf%] ", ((double)(distance % levelCriteria)/(double)levelCriteria)*(double)100);
 }
 
 void Frame::printMain(){
@@ -398,6 +443,9 @@ void Frame::printMain(){
 
     Console::gotoxy((this->consolehorizontal - 14) / 4, 19);
     printf("종료하기 [Q]");
+
+    Console::gotoxy((this->consolehorizontal - 14) / 4, 23);
+    printf("튜토리얼 [R]");
 }
 
 void Frame::printPause(){
@@ -477,8 +525,8 @@ Game::Game(){ //생성자 : 메인 함수에서 클래스를 선언할 때 선�
     this->patchMonsterClock = 40; //patchMonsterClock의 배수 클럭마다 몬스터가 맨 윗줄에 패치됨
     this->bulletClock = 10; //bulletClock의 배수 클럭마다 플레이어 바로 윗줄에 bullet이 생성이 됨
 
-    this->printframe->consolevertical = this->printframe->vertical + 15;
-    this->printframe->consolehorizontal = this->printframe->horizontal + 150;
+    this->printframe->consolevertical = this->printframe->vertical + 15; //콘솔창의 가로 길이
+    this->printframe->consolehorizontal = this->printframe->horizontal + 170; //콘솔창의 세로 길이
 }
 
 void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초기화해주는 함수
@@ -503,7 +551,8 @@ void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초�
     Console::windowSize(this->printframe->consolehorizontal, this->printframe->consolevertical); //윈도우 사이즈를 바꿈
     Console::cls(); //화면을 초기화
     Console::cursorVisible(false); //커서를 보이지 않게 함
-    this->printframe->printLogo(this->printframe->horizontal + 5, 0); //지정된 위치에 로고를 프린트
+    this->printframe->printLogo(); //지정된 위치에 로고를 프린트
+    this->printframe->printScoreframe(); //점수판 위치에 틀 프린트
     Console::useMouse(true); //마우스 사용을 선언함
 }
 
@@ -572,10 +621,8 @@ void Game::makeClock(){
 */
 void Game::printFrame(){
     if(this->distance % this->printframe->SkipFramePer == 0) this->printframe->print();
-    //this->printframe->printDEBUG();
     Console::gotoxy(0, this->printframe->vertical+2);
-    printf("체력 : [%d 개 남음] / 거리 : [%dm]   \n", this->PlayerHealth, this->distance);
-    printf("[%d]페이즈 / 현재 페이즈 [%.1lf%] 진행    \n", this->level + 1, ((double)(this->distance % this->levelCriteria)/(double)this->levelCriteria)*(double)100);
+    this->printframe->printScore(this->score, this->distance, this->level, this->levelCriteria, this->PlayerHealth);
 }
 
 /*
@@ -602,12 +649,12 @@ bool Game::updateFrame(){
 1. 만약 마우스의 x좌표가 출력되는 배열 내에 있다면 플레이어의 이전 죄표를 0으로 만들고 현재 좌표를 1도 만든다.
 */
 void Game::patchPlayer(Console::xy coor){
-    if(coor.x > 0 && coor.x < this->printframe->horizontal+1){
+    if(coor.x > this->printframe->LeftSpace && coor.x < this->printframe->horizontal + 1 + this->printframe->LeftSpace){
         Console::gotoxy(0, this->printframe->vertical+5);
         printf("                                         ");
         this->frame[this->printframe->vertical-1][this->PlayerHorizontal].object = NONE;
         this->frame[this->printframe->vertical-1][this->PlayerHorizontal].health = H_NONE;
-        this->PlayerHorizontal = coor.x-1;
+        this->PlayerHorizontal = coor.x - 1 - this->printframe->LeftSpace;
         this->frame[this->printframe->vertical-1][this->PlayerHorizontal].object = PLAYER;
         this->frame[this->printframe->vertical-1][this->PlayerHorizontal].health = this->PlayerHealth;
     }else{
@@ -851,7 +898,8 @@ int Game::SCREENpause(){
     Console::useMouse(false);
     Console::cls();
     Console::cursorVisible(false);
-    this->printframe->printLogo(this->printframe->horizontal + 5, 0);
+    this->printframe->printLogo();
+    this->printframe->printScoreframe();
     Console::useMouse(true);
 }
 
