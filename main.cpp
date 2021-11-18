@@ -289,6 +289,7 @@ class Frame{
         int consolehorizontal; //콘솔창 가로
         int consolevertical; //콘솔창 세로
 
+        void printIntro(); //인트로 프린트
         void printMain(); //메인 화면 프린트
         void printPause(); //일시정지 화면 프린트
         void printLogo(); //로고 프린트
@@ -373,7 +374,7 @@ void Frame::printLogo(){
     int nowline = 0;
     string line;
     fstream logo;
-    logo.open("MAINLOGO", fstream::in);
+    logo.open("logo/MAINLOGO", fstream::in);
     while (getline(logo, line))
     {
         Console::gotoxy(this->consolehorizontal - 150, nowline++);
@@ -445,7 +446,7 @@ void Frame::printMain(){
     int nowline = 0;
     string line;
     fstream logo;
-    logo.open("MAINLOGO", fstream::in);
+    logo.open("logo/MAINLOGO", fstream::in);
     while (getline(logo, line))
     {
         Console::gotoxy((this->consolehorizontal - 100) / 4, 4 + nowline++);
@@ -483,7 +484,7 @@ void Frame::printPause(){
     int nowline = 0;
     string line;
     fstream logo;
-    logo.open("PAUSELOGO", fstream::in);
+    logo.open("logo/PAUSELOGO", fstream::in);
     while (getline(logo, line))
     {
         Console::gotoxy((this->consolehorizontal - 42) / 4, 4 + nowline++);
@@ -521,7 +522,7 @@ void Frame::printGameOver(){
     int nowline = 0;
     string line;
     fstream logo;
-    logo.open("GAMEOVERLOGO", fstream::in);
+    logo.open("logo/GAMEOVERLOGO", fstream::in);
     while (getline(logo, line))
     {
         Console::gotoxy((this->consolehorizontal - 74) / 4, 4 + nowline++);
@@ -533,6 +534,37 @@ void Frame::printGameOver(){
 
     Console::gotoxy((this->consolehorizontal - 14) / 4, 19);
     printf("다시시작 [R]");
+}
+
+void Frame::printIntro(){
+    Console::windowSize(250, 61);
+    for(int i=1;i<=82;i++){
+        int nowline = 0;
+        string line;
+        fstream logo;
+        string filename = "intro/intro_ascii/" + to_string(i) + ".txt";
+        logo.open(&filename[0], fstream::in);
+        while (getline(logo, line))
+        {
+            Console::gotoxy(0, nowline++);
+            cout << line << endl;
+        }
+        Console::sleep(0.01);
+    }
+
+    for(int i=82;i>0;i--){
+        int nowline = 0;
+        string line;
+        fstream logo;
+        string filename = "intro/intro_ascii/" + to_string(i) + ".txt";
+        logo.open(&filename[0], fstream::in);
+        while (getline(logo, line))
+        {
+            Console::gotoxy(0, nowline++);
+            cout << line << endl;
+        }
+        Console::sleep(0.01);
+    }
 }
 
 class Game{
@@ -1038,6 +1070,9 @@ int main(){
     int todo;
     bool KeepWhile = true;
     Game game;
+    Console::cursorVisible(false);
+
+    while(1) game.printframe->printIntro();
 
     while(KeepWhile){
         todo = game.SCREENmain();
@@ -1047,10 +1082,12 @@ int main(){
             game.makeClock();
         }
         else if(todo == 2){
-            Console::ErrorExit("게임이 종료되었습니다.");
+            Console::useEventInput(false);
+            Console::cls();
+            Console::ErrorExit("게임이 종료되었습니다. [아무키나 누르세요.]");
         }
         else if(todo == 3){
             //튜토리얼 화면
-        }else Console::ErrorExit("Error Occured in [main()] with error value [todo]");
+        }else Console::ErrorExit("Error Occured in [main()] with error variable [todo] value");
     }
 }
