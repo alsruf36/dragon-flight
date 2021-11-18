@@ -454,13 +454,13 @@ void Frame::printMain(){
     }
 
     Console::gotoxy((this->consolehorizontal - 14) / 4, this->consolevertical + 1);
-    printf("시작하기 [W]");
+    printf("시작하기 [Q]");
 
     Console::gotoxy((this->consolehorizontal - 14) / 4, this->consolevertical + 5);
-    printf("종료하기 [Q]");
+    printf("종료하기 [W]");
 
     Console::gotoxy((this->consolehorizontal - 14) / 4, this->consolevertical + 9);
-    printf("튜토리얼 [R]");
+    printf("튜토리얼 [E]");
 }
 
 void Frame::printPause(){
@@ -498,7 +498,7 @@ void Frame::printPause(){
     printf("복귀하기 [W]");
 
     Console::gotoxy((this->consolehorizontal - 14) / 4, 23);
-    printf("다시시작 [R]");
+    printf("다시시작 [E]");
 }
 
 void Frame::printGameOver(){
@@ -530,26 +530,17 @@ void Frame::printGameOver(){
     }
 
     Console::gotoxy((this->consolehorizontal - 14) / 4, 15);
-    printf("종료하기 [Q]");
+    printf("다시시작 [Q]");
 
     Console::gotoxy((this->consolehorizontal - 14) / 4, 19);
-    printf("다시시작 [R]");
+    printf("종료하기 [W]");
+
+    Console::gotoxy((this->consolehorizontal - 14) / 4, 23);
+    printf("메인화면 [E]");
 }
 
 void Frame::printIntro(){
     Console::windowSize(166, 47);
-    for(int i=1;i<=82;i++){
-        int nowline = 0;
-        string line;
-        fstream logo;
-        string filename = "intro/intro_ascii/" + to_string(i) + ".txt";
-        Console::gotoxy(0, 0);
-        logo.open(&filename[0], fstream::in);
-        while (getline(logo, line)){
-            cout << line << endl;
-        }
-    }
-
     for(int i=82;i>0;i--){
         int nowline = 0;
         string line;
@@ -585,13 +576,13 @@ class Game{
 
         int SCREENmain(); //메인 화면이 호출될때 실행되는 함수
         int SCREENpause(); //게임을 일시정지할 때 실행되는 함수
-        void SCREENover(); //게임 오버시 실행되는 함수
+        int SCREENover(); //게임 오버시 실행되는 함수
 
         int PlayerHorizontal; //플레이어의 가로 위치
         int FrameClock; //프레임을 갱신할 클럭 배수
         int patchMonsterClock; //몬스터를 패치할 클럭 배수 
         int bulletClock; //총알을 패치할 클럭 배수
-        void makeClock(); //연산 클럭을 생성함
+        int makeClock(); //연산 클럭을 생성함
         bool updateFrame(); //배열을 조작함
         void patchPlayer(Console::xy coor); //플레이어의 가로 위치를 프레임에 패치
         void patchMonster(); //프레임의 맨 윗줄에 몬스터를 패치
@@ -663,7 +654,7 @@ void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초�
 
 5. 만약) 스레드가 join 되었다면 1로, 아니라면 2로 간다.
 */
-void Game::makeClock(){
+int Game::makeClock(){
     bool gameStatus = true; //gameStatus을 true로 초기화
     while(1){ //게임이 종료될 때 까지 반복
         promise<Console::eventStruct> p; //p를 받겠다고 약속한다.
@@ -690,7 +681,17 @@ void Game::makeClock(){
                     this->patchPlayer(Event.coordinate);
                 }else if(Event.eventType == E_KEY_EVENT){
                     if(Event.keyPressed == true && Event.key == PAUSE_KEY){
-                        this->SCREENpause();
+                        int todo = this->SCREENpause();
+                        if(todo == 1){
+                            gameStatus = false;
+                            break;
+                        }
+                        else if(todo == 2){
+                            Console::cls();
+                            this->printframe->printLogo();
+                            Console::useEventInput(true);
+                        }
+                        else if(todo == 3) this->init();
                     }
                 }
 
@@ -701,8 +702,9 @@ void Game::makeClock(){
             }
         }
         t.join(); //스레드 t를 종료한다.
+        if(gameStatus == false) break;
     }
-    this->SCREENover(); //만약 계속 반복되던 while문이 break되어 종료되면 게임 오버로 간다.
+    return this->SCREENover(); //만약 계속 반복되던 while문이 break되어 종료되면 게임 오버로 간다.
 }
 
 /*
@@ -1023,12 +1025,24 @@ void Game::addScore(int target){
 
 int Game::SCREENpause(){
     this->printframe->printPause();
+    Console::useEventInput(true);
     while(1){
         Console::eventStruct event;
         Console::getEvent(&event);
         if(event.eventType == E_KEY_EVENT){
-            if(event.keyPressed == true && event.key == PAUSE_KEY){
-                break;
+            if(event.eventType == E_KEY_EVENT){
+                if(event.keyPressed == true && event.key == E_Q_KEY) return 1; //종료하기
+                else if(event.keyPressed == true && event.key == E_W_KEY) return 2; //복귀하기
+                else if(event.keyPressed == true && event.key == E_E_KEY) return 3; //다시하기
+            }
+        }
+        else if(event.eventType == E_MOUSE_EVENT){
+            if(event.Clicked == true && event.ClickKey == E_MOUSE_LEFT){
+                //Console::gotoxy(0, 0);
+                //printf("%d %d", event.coordinate.x, event.coordinate.y);
+                if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=14 && event.coordinate.y<=16) return 1; //종료하기
+                else if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=18 && event.coordinate.y<=20) return 2; //복귀하기
+                else if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=22 && event.coordinate.y<=24) return 3; //다시하기
             }
         }
     }
@@ -1063,30 +1077,42 @@ int Game::SCREENmain(){
     }
 }
 
-void Game::SCREENover(){
+int Game::SCREENover(){
     this->printframe->printGameOver();
-
-    //Console::cursorVisible(true);
-    //Console::useEventInput(false);
+    Console::useEventInput(true); //마우스 사용을 선언한다.
+    while(1){
+        Console::eventStruct event;
+        Console::getEvent(&event);
+        if(event.eventType == E_KEY_EVENT){
+            if(event.keyPressed == true && event.key == E_Q_KEY) return 1; //다시시작
+            else if(event.keyPressed == true && event.key == E_W_KEY) return 2; //종료하기
+            else if(event.keyPressed == true && event.key == E_E_KEY) return 3; //메인화면
+        }
+        else if(event.eventType == E_MOUSE_EVENT){
+            if(event.Clicked == true && event.ClickKey == E_MOUSE_LEFT){
+                //Console::gotoxy(0, 0);
+                //printf("%d %d", event.coordinate.x, event.coordinate.y);
+                if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=14 && event.coordinate.y<=16) return 1; //다시시작
+                else if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=18 && event.coordinate.y<=20) return 2; //종료하기
+                else if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=22 && event.coordinate.y<=24) return 3; //메인화면
+            }
+        }
+    }
 }
 
-/*
-[main()]
-다음의 알고리즘을 시행합니다.
-*/
 int main(){
     int todo;
     bool KeepWhile = true;
     Game game;
     Console::cursorVisible(false);
-    game.printframe->printIntro();
+    //game.printframe->printIntro(); //인트로 프린트
 
+    todo = game.SCREENmain();
     while(KeepWhile){
-        todo = game.SCREENmain();
-
         if(todo == 1){
             game.init();
-            game.makeClock();
+            todo = game.makeClock();
+            if(todo == 3) todo = game.SCREENmain();
         }
         else if(todo == 2){
             Console::useEventInput(false);
