@@ -708,7 +708,7 @@ Game::Game(){ //생성자 : 메인 함수에서 클래스를 선언할 때 선�
     this->levelCriteria = 500; //한 레벨을 올리는 데의 기준
     this->FrameClock = 10; //FrameClock의 배수 클럭마다 프레임이 갱신된다.
     this->patchMonsterClock = 120; //patchMonsterClock의 배수 클럭마다 몬스터가 맨 윗줄에 패치된다.
-    this->bulletClock = 10; //bulletClock의 배수 클럭마다 플레이어 바로 윗줄에 bullet이 생성이 된다.
+    this->bulletClock = 4; //bulletClock의 배수 클럭마다 플레이어 바로 윗줄에 bullet이 생성이 된다.
     this->meteorClock = 100;
 
     this->printframe->consolevertical = this->printframe->vertical + 10; //콘솔창의 세로 길이
@@ -774,6 +774,7 @@ int Game::makeClock(){
 
              if(this->distance % this->levelCriteria == 0){ //만약 distance가 levelCriteria의 배수라면
                 this->level++; //level을 1 증가시킨다.
+                if(this->level % 2 == 0) this->printframe->SkipFramePer++;
             }
             this->distance++; //distance을 1 증가시킨다.
              
@@ -858,10 +859,16 @@ bool Game::updateFrame(){
             this->frame[0][this->meteorHorizontal].health = H_METEOR;
         }
     }else if(this->distance % this->meteorClock == this->meteorClock-21) this->meteorHorizontal = this->PlayerHorizontal;
-    else if((this->distance % this->meteorClock >= this->meteorClock-20 && this->distance % this->meteorClock <= this->meteorClock-16) || (this->distance % this->meteorClock >= this->meteorClock-10 && this->distance % this->meteorClock <= this->meteorClock-6))
+    else if(this->distance % this->meteorClock >= this->meteorClock-20 && this->distance % this->meteorClock <= this->meteorClock-16)
+        this->printframe->printColorLine(B_GREEN, this->meteorHorizontal);
+
+    else if(this->distance % this->meteorClock >= this->meteorClock-15 && this->distance % this->meteorClock <= this->meteorClock-11)
+        this->printframe->printColorLine(B_YELLOW, this->meteorHorizontal);
+    
+    else if(this->distance % this->meteorClock >= this->meteorClock-10 && this->distance % this->meteorClock <= this->meteorClock-6)
         this->printframe->printColorLine(B_PURPLE, this->meteorHorizontal);
 
-    else if((this->distance % this->meteorClock >= this->meteorClock-15 && this->distance % this->meteorClock <= this->meteorClock-11) || (this->distance % this->meteorClock >= this->meteorClock-5 && this->distance % this->meteorClock <= this->meteorClock-1))
+    else if(this->distance % this->meteorClock >= this->meteorClock-5 && this->distance % this->meteorClock <= this->meteorClock-1)
         this->printframe->printColorLine(B_RED, this->meteorHorizontal);
 
     if(this->shiftFrame() == false) return false;
@@ -1101,7 +1108,8 @@ bool Game::shiftFrame(){
         }
     }
 
-    if(this->distance % this->FrameClock == 0){ //만약 클럭이 (FrameClock - levelCriteria)의 배수이면
+    int MonsterClock = (this->FrameClock - this->printframe->SkipFramePer > 2) ? this->FrameClock - this->printframe->SkipFramePer : 2;
+    if(this->distance % MonsterClock == 0){ //만약 클럭이 (FrameClock - levelCriteria)의 배수이면
         for(int v=this->printframe->vertical-2;v>=0;v--){
             for(int h=0;h<this->printframe->horizontal;h++){
                 if(v == this->printframe->vertical-2){ //만약 현재 행이 (마지막 행 - 1)의 이라면
@@ -1278,7 +1286,7 @@ int main(){
     Console::cursorVisible(false);
 
     Console::sleep(0.5);
-    //game.printframe->printIntro(); //인트로 프린트
+    game.printframe->printIntro(); //인트로 프린트
 
     todo = game.SCREENmain();
     while(KeepWhile){
