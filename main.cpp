@@ -169,6 +169,7 @@ namespace Console{
 
     void init(){
         system("chcp 65001");
+        SetConsoleTitle(TEXT("[console] dragon flight"));
     }
 
     void sleep(float sec){
@@ -271,6 +272,22 @@ namespace Console{
             getEvent(&event);
         }
         p->set_value(event);
+    }
+
+    void moveWindowCenter(){
+        HWND hwndmoveWindow = GetConsoleWindow();
+
+        RECT consoleWindow;
+        ::GetWindowRect(hwndmoveWindow, &consoleWindow);
+        xy consoleWindowSize = {consoleWindow.right - consoleWindow.left, consoleWindow.bottom - consoleWindow.top};
+        xy screenSize = {GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
+        
+        ::SetWindowPos(hwndmoveWindow, HWND_TOPMOST, (screenSize.x - consoleWindowSize.x)/2, (screenSize.y - consoleWindowSize.y)/2, 0, 0, SWP_NOSIZE | SWP_NOREDRAW );
+    }
+
+    void moveWindowCoordinate(int x, int y){
+        HWND hwndmoveWindow = GetConsoleWindow();
+        ::SetWindowPos(hwndmoveWindow, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOREDRAW );
     }
 }
 
@@ -452,6 +469,7 @@ void Frame::printScore(int score, int distance, int level, int levelCriteria, in
 
 void Frame::printMain(){
     Console::windowSize(this->consolehorizontal,  this->consolevertical + 20);
+    Console::moveWindowCenter();
     Console::gotoxy(0, 0);
     printf("┌");
     for(int i=0;i<this->consolehorizontal - 3;i++) printf("─");
@@ -490,6 +508,7 @@ void Frame::printMain(){
 }
 
 void Frame::printPause(){
+    Console::moveWindowCenter();
     Console::gotoxy(0, 0);
     printf("┌");
     for(int i=0;i<this->consolehorizontal - 3;i++) printf("─");
@@ -537,6 +556,7 @@ void Frame::printBlank(){
 }
 
 void Frame::printGameOver(int score, int distance, int level){
+    Console::moveWindowCenter();
     Console::gotoxy(0, 0);
     printf("┌");
     for(int i=0;i<this->consolehorizontal - 3;i++) printf("─");
@@ -573,12 +593,19 @@ void Frame::printGameOver(int score, int distance, int level){
     Console::gotoxy((this->consolehorizontal - 14) / 4, 23);
     printf("메인화면 [E]");
 
-    Console::gotoxy((this->consolehorizontal - 14) / 4, 23);
+    Console::gotoxy((this->consolehorizontal - 14) / 4, 25);
     printf("간 거리 : %dm", distance);
+    
+    Console::gotoxy((this->consolehorizontal - 14) / 4, 27);
+    printf("총 점수 : %d점", score);
+
+    Console::gotoxy((this->consolehorizontal - 14) / 4, 29);
+    printf("%d 페이즈 달성!", level);
 }
 
 void Frame::printIntro(){
     Console::windowSize(166, 47);
+    Console::moveWindowCenter();
     for(int i=82;i>0;i--){
         int nowline = 0;
         string line;
@@ -671,6 +698,7 @@ void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초�
     
     srand(time(NULL)); //난수 시드 설정
     Console::windowSize(this->printframe->consolehorizontal, this->printframe->consolevertical); //윈도우 사이즈를 바꾼다.
+    Console::moveWindowCenter();
     Console::cls(); //화면을 초기화
     Console::cursorVisible(false); //커서를 보이지 않게 한다.
     this->printframe->printLogo(); //로고를 프린트한다.
@@ -1098,6 +1126,7 @@ int Game::SCREENpause(){
     Console::useEventInput(false);
     Console::cls();
     Console::windowSize(this->printframe->consolehorizontal, this->printframe->consolevertical);
+    Console::moveWindowCenter();
     Console::cursorVisible(false);
     this->printframe->printLogo();
     this->printframe->printAlert(1);
@@ -1119,9 +1148,11 @@ int Game::SCREENmain(){
         }
         else if(event.eventType == E_MOUSE_EVENT){
             if(event.Clicked == true && event.ClickKey == E_MOUSE_LEFT){
-                if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=30 && event.coordinate.y<=32) return 1; //시작하기
-                else if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=34 && event.coordinate.y<=36) return 2; //종료하기
-                else if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=38 && event.coordinate.y<=40) return 3; //튜토리얼
+                Console::gotoxy(0, 0);
+                printf("%d %d", event.coordinate.x, event.coordinate.y);
+                if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=35 && event.coordinate.y<=37) return 1; //시작하기
+                else if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=39 && event.coordinate.y<=41) return 2; //종료하기
+                else if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=43 && event.coordinate.y<=45) return 3; //튜토리얼
             }
         }
     }
@@ -1155,6 +1186,7 @@ int main(){
     bool KeepWhile = true;
     Game game;
     Console::cursorVisible(false);
+
     game.printframe->printIntro(); //인트로 프린트
 
     todo = game.SCREENmain();
@@ -1171,6 +1203,7 @@ int main(){
         }
         else if(todo == 3){
             //튜토리얼 화면
+            todo = game.SCREENmain();
         }else Console::ErrorExit("Error Occured in [main()] with error variable [todo] value");
     }
 }
