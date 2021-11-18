@@ -135,6 +135,9 @@ using namespace std;
 #define PAUSE_KEY 119
 #define E_MOUSE_LEFT 1
 #define E_MOUSE_RIGHT 2
+#define E_Q_KEY 113
+#define E_W_KEY 119
+#define E_E_KEY 101
 
 typedef struct Element{
     int object; //자신의 오브젝트 번호
@@ -248,7 +251,7 @@ namespace Console{
                     else if (irInBuf.Event.MouseEvent.dwButtonState == RIGHTMOST_BUTTON_PRESSED){
                         event->Clicked = true;
                         event->ClickKey = E_MOUSE_RIGHT;
-                    }
+                    }else event->Clicked = false;
                 }
 
                 int mouse_x = irInBuf.Event.MouseEvent.dwMousePosition.X;
@@ -421,19 +424,20 @@ void Frame::printScore(int score, int distance, int level, int levelCriteria, in
 }
 
 void Frame::printMain(){
+    Console::windowSize(this->consolehorizontal,  this->consolevertical + 20);
     Console::gotoxy(0, 0);
     printf("┌");
     for(int i=0;i<this->consolehorizontal - 3;i++) printf("─");
     printf("┐");
 
-    for(int i=0;i<this->consolevertical - 2;i++){
+    for(int i=0;i<this->consolevertical + 18;i++){
         Console::gotoxy(0, i+1);
         printf("│");
         for(int j=0;j<this->consolehorizontal - 3;j++) printf(" ");
         printf("│");
     }
 
-    Console::gotoxy(0, this->consolevertical - 1);
+    Console::gotoxy(0, this->consolevertical + 19);
     printf("└");
     for(int i=0;i<this->consolehorizontal - 3;i++) printf("─");
     printf("┘");
@@ -448,13 +452,13 @@ void Frame::printMain(){
         cout << line << endl;
     }
 
-    Console::gotoxy((this->consolehorizontal - 14) / 4, 15);
+    Console::gotoxy((this->consolehorizontal - 14) / 4, this->consolevertical + 1);
     printf("시작하기 [W]");
 
-    Console::gotoxy((this->consolehorizontal - 14) / 4, 19);
+    Console::gotoxy((this->consolehorizontal - 14) / 4, this->consolevertical + 5);
     printf("종료하기 [Q]");
 
-    Console::gotoxy((this->consolehorizontal - 14) / 4, 23);
+    Console::gotoxy((this->consolehorizontal - 14) / 4, this->consolevertical + 9);
     printf("튜토리얼 [R]");
 }
 
@@ -539,7 +543,9 @@ class Game{
         int level; //현재 레벨(levelCriteria의 배수마다 1 증가)
         int levelCriteria; //한 레벨을 올리는 데의 기준
 
+        int SCREENmain(); //메인 화면이 호출될때 실행되는 함수
         int SCREENpause(); //게임을 일시정지할 때 실행되는 함수
+        void SCREENover(); //게임 오버시 실행되는 함수
 
         int PlayerHorizontal; //플레이어의 가로 위치
         int FrameClock; //프레임을 갱신할 클럭 배수
@@ -551,7 +557,6 @@ class Game{
         void patchMonster(); //프레임의 맨 윗줄에 몬스터를 패치
         bool shiftFrame(); //맨 윗줄부터 플레이어 이전 줄을 한 칸 아래로 민다.
         void printFrame(); //매 클럭당 출력
-        void Over(); //몬스터와 플레이어 충돌시 실행되는 함수
 
         void addScore(int target); //몬스터에 따라 score변수에 점수 추가
         Element randomMonster(int from, int to); //from부터 to까지 범위에 있는 몬스터를 랜덤으로 뽑아 구조체를 반환
@@ -573,6 +578,7 @@ Game::Game(){ //생성자 : 메인 함수에서 클래스를 선언할 때 선�
 
     this->printframe->consolevertical = this->printframe->vertical + 15; //콘솔창의 가로 길이
     this->printframe->consolehorizontal = this->printframe->horizontal + 170; //콘솔창의 세로 길이
+    Console::useEventInput(true); //마우스 사용을 선언한다.
 }
 
 void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초기화해주는 함수
@@ -598,7 +604,7 @@ void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초�
     Console::cls(); //화면을 초기화
     Console::cursorVisible(false); //커서를 보이지 않게 한다.
     this->printframe->printLogo(); //지정된 위치에 로고를 프린트한다.
-    this->printframe->printScoreframe(); //점수판 위치에 틀 프린트한다.
+    this->printframe->printScoreframe(); //점수판 위치에 틀을 프린트한다.
     Console::useEventInput(true); //마우스 사용을 선언한다.
 }
 
@@ -656,7 +662,7 @@ void Game::makeClock(){
         }
         t.join(); //스레드 t를 종료한다.
     }
-    this->Over(); //만약 계속 반복되던 while문이 break되어 종료되면 게임 오버로 간다.
+    this->SCREENover(); //만약 계속 반복되던 while문이 break되어 종료되면 게임 오버로 간다.
 }
 
 /*
@@ -840,46 +846,48 @@ bool Game::shiftFrame(){
         }
     }
 
-    for(int v=1;v<this->printframe->vertical-1;v++){ //bullet shift
-        for(int h=0;h<this->printframe->horizontal;h++){
-            if(this->frame[v][h].object == BULLET){ //만약 현재 오브젝트가 bullet이면
-                if(this->frame[v-1][h].object > BULLET){ //만약 이전 줄 오브젝트가 몬스터이면
-                    this->frame[v][h].health--; //bullet의 체력을 1 감소시킨다.
-                    this->frame[v-1][h].health--; //몬스터의 체력을 1 감소시킨다.
+    if(this->distance % this->printframe->SkipFramePer == 0){
+        for(int v=1;v<this->printframe->vertical-1;v++){ //bullet shift
+            for(int h=0;h<this->printframe->horizontal;h++){
+                if(this->frame[v][h].object == BULLET){ //만약 현재 오브젝트가 bullet이면
+                    if(this->frame[v-1][h].object > BULLET){ //만약 이전 줄 오브젝트가 몬스터이면
+                        this->frame[v][h].health--; //bullet의 체력을 1 감소시킨다.
+                        this->frame[v-1][h].health--; //몬스터의 체력을 1 감소시킨다.
 
-                    if(this->frame[v][h].health == H_NONE){ //bullet의 체력이 0이면 배열에서 삭제한다.
+                        if(this->frame[v][h].health == H_NONE){ //bullet의 체력이 0이면 배열에서 삭제한다.
+                            this->frame[v][h].object = NONE;
+                            this->frame[v][h].health = H_NONE;
+                        }
+
+                        if(this->frame[v-1][h].health == H_NONE){ //몬스터의 체력이 0이면 배열에서 삭제하고, 점수에 추가한다.
+                            this->addScore(this->frame[v-1][h].object); //몬스터에 해당하는 점수를 추가한다.
+                            this->frame[v-1][h].object = NONE;
+                            this->frame[v-1][h].health = H_NONE;
+                        }
+
+                        if(this->frame[v][h].object != NONE){
+                            if(this->frame[v-1][h].object != NONE){
+                                this->frame[v-1][h].back->object = BULLET; //몬스터 뒤에 bullet 오브젝트를 옮긴다.
+                                this->frame[v-1][h].back->health = this->frame[v][h].health;
+                            }else{
+                                this->frame[v-1][h].object = BULLET; //몬스터 위치에 bullet 오브젝트를 옮긴다.
+                                this->frame[v-1][h].health = this->frame[v][h].health;
+                            }
+                        }
+                        this->frame[v][h].object = NONE;
+                        this->frame[v][h].health = H_NONE;
+                    }else{
+                        this->frame[v-1][h].object = BULLET;
+                        this->frame[v-1][h].health = this->frame[v][h].health;
                         this->frame[v][h].object = NONE;
                         this->frame[v][h].health = H_NONE;
                     }
-
-                    if(this->frame[v-1][h].health == H_NONE){ //몬스터의 체력이 0이면 배열에서 삭제하고, 점수에 추가한다.
-                        this->addScore(this->frame[v-1][h].object); //몬스터에 해당하는 점수를 추가한다.
-                        this->frame[v-1][h].object = NONE;
-                        this->frame[v-1][h].health = H_NONE;
-                    }
-
-                    if(this->frame[v][h].object != NONE){
-                        if(this->frame[v-1][h].object != NONE){
-                            this->frame[v-1][h].back->object = BULLET; //몬스터 뒤에 bullet 오브젝트를 옮긴다.
-                            this->frame[v-1][h].back->health = this->frame[v][h].health;
-                        }else{
-                            this->frame[v-1][h].object = BULLET; //몬스터 위치에 bullet 오브젝트를 옮긴다.
-                            this->frame[v-1][h].health = this->frame[v][h].health;
-                        }
-                    }
-                    this->frame[v][h].object = NONE;
-                    this->frame[v][h].health = H_NONE;
-                }else{
+                }else if(this->frame[v][h].back->object == BULLET){ //만약 현재 오브젝트 뒤에 bullet이 있으면
                     this->frame[v-1][h].object = BULLET;
-                    this->frame[v-1][h].health = this->frame[v][h].health;
-                    this->frame[v][h].object = NONE;
-                    this->frame[v][h].health = H_NONE;
+                    this->frame[v-1][h].health = this->frame[v][h].back->health;
+                    this->frame[v][h].back->object = NONE;
+                    this->frame[v][h].back->health = H_NONE;
                 }
-            }else if(this->frame[v][h].back->object == BULLET){ //만약 현재 오브젝트 뒤에 bullet이 있으면
-                this->frame[v-1][h].object = BULLET;
-                this->frame[v-1][h].health = this->frame[v][h].back->health;
-                this->frame[v][h].back->object = NONE;
-                this->frame[v][h].back->health = H_NONE;
             }
         }
     }
@@ -994,7 +1002,28 @@ int Game::SCREENpause(){
     Console::useEventInput(true);
 }
 
-void Game::Over(){
+int Game::SCREENmain(){
+    this->printframe->printMain();
+    Console::useEventInput(true); //마우스 사용을 선언한다.
+    while(1){
+        Console::eventStruct event;
+        Console::getEvent(&event);
+        if(event.eventType == E_KEY_EVENT){
+            if(event.keyPressed == true && event.key == E_Q_KEY) return 1; //시작하기
+            else if(event.keyPressed == true && event.key == E_W_KEY) return 2; //종료하기
+            else if(event.keyPressed == true && event.key == E_E_KEY) return 3; //튜토리얼
+        }
+        else if(event.eventType == E_MOUSE_EVENT){
+            if(event.Clicked == true && event.ClickKey == E_MOUSE_LEFT){
+                if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=30 && event.coordinate.y<=32) return 1; //시작하기
+                else if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=34 && event.coordinate.y<=36) return 2; //종료하기
+                else if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=38 && event.coordinate.y<=40) return 3; //튜토리얼
+            }
+        }
+    }
+}
+
+void Game::SCREENover(){
     this->printframe->printGameOver();
 
     //Console::cursorVisible(true);
@@ -1006,8 +1035,22 @@ void Game::Over(){
 다음의 알고리즘을 시행합니다.
 */
 int main(){
+    int todo;
+    bool KeepWhile = true;
     Game game;
-    
-    game.init();
-    game.makeClock();
+
+    while(KeepWhile){
+        todo = game.SCREENmain();
+
+        if(todo == 1){
+            game.init();
+            game.makeClock();
+        }
+        else if(todo == 2){
+            Console::ErrorExit("게임이 종료되었습니다.");
+        }
+        else if(todo == 3){
+            //튜토리얼 화면
+        }else Console::ErrorExit("Error Occured in [main()] with error value [todo]");
+    }
 }
