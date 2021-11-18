@@ -290,6 +290,7 @@ class Frame{
         void printLogo(); //로고 프린트
         void printScore(int score, int distance, int level, int levelCriteria, int PlayerHealth); //점수 프린트
         void printScoreframe(); //점수 프레임 프린트
+        void printGameOver(); //게임 오버 화면 프린트
         int LogoVertical = 3; //로고 세로 길이
         int LeftSpace = 6; //게임 배열 좌측 공간
         int ScoreboardHeight = 3; //점수 프레임을 프린트할 때 위의 공간
@@ -378,7 +379,7 @@ void Frame::printScoreframe(){
     printf("┐");
 
     int v;
-    for(v=0;v<6;v++){
+    for(v=0;v<7;v++){
         Console::gotoxy(this->horizontal, this->ScoreboardHeight + 1 + v);
         printf("│");
         for(int h=0;h<22;h++) printf(" ");
@@ -394,19 +395,22 @@ void Frame::printScoreframe(){
 
 void Frame::printScore(int score, int distance, int level, int levelCriteria, int PlayerHealth){
     Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 2);
+    printf("점수 : %dm", score);
+    
+    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 3);
     printf("거리 : %dm", distance);
 
-    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 3);
+    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 4);
     printf("체력 : ");
     Console::setColor(B_RED, BLACK);
     for(int i=0;i<PlayerHealth;i++) printf("H ");
     for(int i=0;i<H_PLAYER - PlayerHealth;i++) printf("  ");
     Console::setColor(B_WHITE, BLACK);
 
-    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 4);
+    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 5);
     printf("페이즈 : %d번째 ", level + 1);
 
-    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 5);
+    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 6);
     printf("현재 페이즈 [%.1lf%] ", ((double)(distance % levelCriteria)/(double)levelCriteria)*(double)100);
 }
 
@@ -434,7 +438,7 @@ void Frame::printMain(){
     logo.open("MAINLOGO", fstream::in);
     while (getline(logo, line))
     {
-        Console::gotoxy((this->consolehorizontal - 42) / 4, 4 + nowline++);
+        Console::gotoxy((this->consolehorizontal - 100) / 4, 4 + nowline++);
         cout << line << endl;
     }
 
@@ -483,6 +487,41 @@ void Frame::printPause(){
     printf("복귀하기 [W]");
 
     Console::gotoxy((this->consolehorizontal - 14) / 4, 23);
+    printf("다시시작 [R]");
+}
+
+void Frame::printGameOver(){
+    Console::gotoxy(0, 0);
+    printf("┌");
+    for(int i=0;i<this->consolehorizontal - 3;i++) printf("─");
+    printf("┐");
+
+    for(int i=0;i<this->consolevertical - 2;i++){
+        Console::gotoxy(0, i+1);
+        printf("│");
+        for(int j=0;j<this->consolehorizontal - 3;j++) printf(" ");
+        printf("│");
+    }
+
+    Console::gotoxy(0, this->consolevertical - 1);
+    printf("└");
+    for(int i=0;i<this->consolehorizontal - 3;i++) printf("─");
+    printf("┘");
+
+    int nowline = 0;
+    string line;
+    fstream logo;
+    logo.open("GAMEOVERLOGO", fstream::in);
+    while (getline(logo, line))
+    {
+        Console::gotoxy((this->consolehorizontal - 74) / 4, 4 + nowline++);
+        cout << line << endl;
+    }
+
+    Console::gotoxy((this->consolehorizontal - 14) / 4, 15);
+    printf("종료하기 [Q]");
+
+    Console::gotoxy((this->consolehorizontal - 14) / 4, 19);
     printf("다시시작 [R]");
 }
 
@@ -904,8 +943,10 @@ int Game::SCREENpause(){
 }
 
 void Game::Over(){
-    Console::cursorVisible(true);
-    Console::useMouse(false);
+    this->printframe->printGameOver();
+
+    //Console::cursorVisible(true);
+    //Console::useMouse(false);
 }
 
 /*
@@ -914,7 +955,7 @@ void Game::Over(){
 */
 int main(){
     Game game;
-
+    
     game.init();
     game.makeClock();
 }
