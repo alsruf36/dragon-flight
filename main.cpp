@@ -71,7 +71,7 @@ TODO
 //IO 컨트롤
 #include <iostream>
 #include <string>
-#include <vector>
+#include <algorithm>
 #include <thread>
 #include <future>
 #include <chrono>
@@ -82,6 +82,8 @@ TODO
 #include <conio.h>
 #include <Windows.h>
 #include <tchar.h>
+#include <shlobj.h>
+#include <exdisp.h>
 using namespace std;
 
 //색깔 정의
@@ -111,6 +113,7 @@ using namespace std;
 #define GREEN_DRAGON 5
 #define RED_DRAGON 6
 #define PURPLE_DRAGON 7
+#define METEOR 8
 
 //체력 정의
 #define H_NONE 0
@@ -121,6 +124,7 @@ using namespace std;
 #define H_GREEN_DRAGON 3
 #define H_RED_DRAGON 4
 #define H_PURPLE_DRAGON 5
+#define H_METEOR 9
 
 //점수 정의
 #define S_WHITE_DRAGON 50
@@ -169,7 +173,7 @@ namespace Console{
 
     void init(){
         system("chcp 65001");
-        SetConsoleTitle(TEXT("[console] dragon flight"));
+        SetConsoleTitle(TEXT("dragon flight"));
     }
 
     void sleep(float sec){
@@ -310,15 +314,18 @@ class Frame{
         void printIntro(); //인트로 프린트
         void printMain(); //메인 화면 프린트
         void printPause(); //일시정지 화면 프린트
-        void printBlank(); //빈 틀을 출력
+        void printBlank(); //빈 틀을 프린트
         void printLogo(); //로고 프린트
+        void printColorLine(int color, int horizontal); //컬러 라인을 프린트
         void printScore(int score, int distance, int level, int levelCriteria, int PlayerHealth); //점수 프린트
         void printScoreframe(); //점수 프레임 프린트
         void printGameOver(int score, int distance, int level); //게임 오버 화면 프린트
-        int SkipFramePer = 2; //출력할 프레임 배수(나머지 프레임은 출력을 하지 않음)
+        int SkipFramePer = 1; //출력할 프레임 배수(나머지 프레임은 출력을 하지 않음)
         int LogoVertical = 3; //로고 세로 길이
         int LeftSpace = 6; //게임 배열 좌측 공간
+        int UpperSpace = 4; //게임 배열 위쪽 공간
         int ScoreboardHeight = 4; //점수 프레임을 프린트할 때 위의 공간
+        int alertcode; //알림 코드
 
         Frame(int fps, int horizontal, int vertical); //생성자
 };
@@ -328,6 +335,7 @@ Frame::Frame(int fps, int horizontal, int vertical){
     this->horizontal = horizontal;
     this->vertical = vertical;
     this->interval = 1.0/(float)(this->fps);
+    this->alertcode = 0;
 
     this->frame = new Element *[this->vertical];
     for(int i=0;i < this->vertical;i++){
@@ -342,22 +350,30 @@ Frame::Frame(int fps, int horizontal, int vertical){
 다음의 알고리즘을 시행합니다.
 */
 void Frame::print(){
-    Console::gotoxy(0, 0);
-    Console::setColor(B_WHITE, BLACK);
+    Console::gotoxy(0, this->UpperSpace);
 
-    Console::gotoxy(this->LeftSpace/2, 0);
+    if(this->alertcode == 2) Console::setColor(B_RED, BLACK);
+    else Console::setColor(B_WHITE, BLACK);
+    Console::gotoxy(this->LeftSpace/2, this->UpperSpace);
     printf("┌");
     for(int v=0;v<this->horizontal;v++) printf("─");
     printf("┐\n");
 
     int v;
     for(v=0;v<this->vertical;v++){
-        Console::setColor(B_WHITE, BLACK);
-        Console::gotoxy(this->LeftSpace/2, v+1);
+        Console::gotoxy(this->LeftSpace/2, this->UpperSpace+v+1);
+        if(this->alertcode == 2) Console::setColor(B_RED, BLACK);
+        else Console::setColor(B_WHITE, BLACK);
         printf("│");
+        Console::setColor(B_WHITE, BLACK);
+
         for(int h=0;h<this->horizontal;h++){
             if(this->frame[v][h].object == NONE){
                 Console::setColor(B_WHITE, BLACK);
+                printf(" ");
+            }
+            else if(this->frame[v][h].object == METEOR){
+                Console::setColor(B_RED, B_RED);
                 printf(" ");
             }
             else if(this->frame[v][h].object == BULLET){
@@ -378,14 +394,19 @@ void Frame::print(){
                 printf("%d", this->frame[v][h].health);
             }
         }
+        if(this->alertcode == 2) Console::setColor(B_RED, BLACK);
+        else Console::setColor(B_WHITE, BLACK);
+        printf("│");
         Console::setColor(B_WHITE, BLACK);
-        printf("│\n");
     }
 
-    Console::gotoxy(this->LeftSpace/2, v+1);
+    Console::gotoxy(this->LeftSpace/2, this->UpperSpace+v+1);
+    if(this->alertcode == 2) Console::setColor(B_RED, BLACK);
+    else Console::setColor(B_WHITE, BLACK);
     printf("└");
     for(int v=0;v<this->horizontal;v++) printf("─");
     printf("┘\n");
+    Console::setColor(B_WHITE, BLACK);
 }
 
 void Frame::printAlert(int alertcode){
@@ -393,12 +414,14 @@ void Frame::printAlert(int alertcode){
     case 0:
         Console::gotoxy((this->consolehorizontal - 30)/4, this->consolevertical - 1);
         cout << "                                                                    ";
+        this->alertcode = 0;
         break;
 
     case 1:
         Console::gotoxy((this->consolehorizontal - 30)/4, this->consolevertical - 1);
         Console::setColor(B_WHITE, BLACK);
         cout << "[W]를 눌러 일지정지 할 수 있습니다.         ";
+        this->alertcode = 1;
         break;
 
     case 2:
@@ -406,6 +429,7 @@ void Frame::printAlert(int alertcode){
         Console::setColor(B_RED, BLACK);
         cout << "마우스를 플레이 범위 안으로 옮겨주세요!      ";
         Console::setColor(B_WHITE, BLACK);
+        this->alertcode = 2;
         break;
     
     default:
@@ -456,7 +480,7 @@ void Frame::printScore(int score, int distance, int level, int levelCriteria, in
     Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 4);
     printf("체력 : ");
     Console::setColor(B_RED, BLACK);
-    for(int i=0;i<PlayerHealth;i++) printf("H ");
+    for(int i=0;i<PlayerHealth;i++) printf("❤ ");
     for(int i=0;i<H_PLAYER - PlayerHealth;i++) printf("  ");
     Console::setColor(B_WHITE, BLACK);
 
@@ -555,6 +579,17 @@ void Frame::printBlank(){
     }
 }
 
+void Frame::printColorLine(int color, int horizontal){
+    Console::setColor(color, color);
+
+    for(int i=0;i<this->vertical - 1;i++){
+        Console::gotoxy((this->LeftSpace + 1)/2 + horizontal/2, this->UpperSpace + 1 + i);
+        printf("   ");
+    }
+
+    Console::setColor(B_WHITE, BLACK);
+}
+
 void Frame::printGameOver(int score, int distance, int level){
     Console::moveWindowCenter();
     Console::gotoxy(0, 0);
@@ -645,9 +680,11 @@ class Game{
 
         int nowAlertcode; //현재 Alertcode
         int PlayerHorizontal; //플레이어의 가로 위치
+        int meteorHorizontal; //운석의 가로 위치
         int FrameClock; //프레임을 갱신할 클럭 배수
         int patchMonsterClock; //몬스터를 패치할 클럭 배수 
         int bulletClock; //총알을 패치할 클럭 배수
+        int meteorClock; //운석을 패치할 클럭 배수
         int makeClock(); //연산 클럭을 생성함
         bool updateFrame(); //배열을 조작함
         void patchPlayer(Console::xy coor); //플레이어의 가로 위치를 프레임에 패치
@@ -672,6 +709,7 @@ Game::Game(){ //생성자 : 메인 함수에서 클래스를 선언할 때 선�
     this->FrameClock = 10; //FrameClock의 배수 클럭마다 프레임이 갱신된다.
     this->patchMonsterClock = 120; //patchMonsterClock의 배수 클럭마다 몬스터가 맨 윗줄에 패치된다.
     this->bulletClock = 10; //bulletClock의 배수 클럭마다 플레이어 바로 윗줄에 bullet이 생성이 된다.
+    this->meteorClock = 100;
 
     this->printframe->consolevertical = this->printframe->vertical + 10; //콘솔창의 세로 길이
     this->printframe->consolehorizontal = this->printframe->horizontal + 170; //콘솔창의 가로 길이
@@ -690,6 +728,7 @@ void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초�
     }
     this->PlayerHealth = H_PLAYER;
     this->PlayerHorizontal = this->printframe->horizontal/2; //플레이어의 초기 좌표를 설정한다. [맨 밑줄 (가로길이/2)번째 칸을 지정]
+    this->meteorHorizontal = this->PlayerHorizontal;
     this->frame[this->printframe->vertical-1][this->PlayerHorizontal].object = PLAYER; //PlayerHorizontal 칸을 PLAYER로 지정한다.
     this->frame[this->printframe->vertical-1][this->PlayerHorizontal].health = this->PlayerHealth; //플레이어의 체력을 설정한다.
     this->distance = 0; //현재 거리
@@ -809,6 +848,22 @@ bool Game::updateFrame(){
             this->frame[this->printframe->vertical-2][this->PlayerHorizontal].health = H_BULLET;
         }
     }
+
+    if(this->distance % this->meteorClock == 0){
+        if(this->frame[0][this->meteorHorizontal].object > 2){
+            this->frame[0][this->meteorHorizontal].back->object = METEOR;
+            this->frame[0][this->meteorHorizontal].back->health = H_METEOR;
+        }else{
+            this->frame[0][this->meteorHorizontal].object = METEOR;
+            this->frame[0][this->meteorHorizontal].health = H_METEOR;
+        }
+    }else if(this->distance % this->meteorClock == this->meteorClock-21) this->meteorHorizontal = this->PlayerHorizontal;
+    else if((this->distance % this->meteorClock >= this->meteorClock-20 && this->distance % this->meteorClock <= this->meteorClock-16) || (this->distance % this->meteorClock >= this->meteorClock-10 && this->distance % this->meteorClock <= this->meteorClock-6))
+        this->printframe->printColorLine(B_PURPLE, this->meteorHorizontal);
+
+    else if((this->distance % this->meteorClock >= this->meteorClock-15 && this->distance % this->meteorClock <= this->meteorClock-11) || (this->distance % this->meteorClock >= this->meteorClock-5 && this->distance % this->meteorClock <= this->meteorClock-1))
+        this->printframe->printColorLine(B_RED, this->meteorHorizontal);
+
     if(this->shiftFrame() == false) return false;
     if(this->distance % this->FrameClock == 0) this->patchMonster();
     return true;
@@ -825,12 +880,6 @@ void Game::patchPlayer(Console::xy coor){
         if(this->nowAlertcode != 1){
             this->printframe->printAlert(1);
             this->nowAlertcode = 1;
-            for(int v=0;v<this->printframe->vertical + 2;v++){
-                Console::gotoxy(this->printframe->LeftSpace/2 - 2, v);
-                printf("  ");
-                Console::gotoxy(this->printframe->LeftSpace/2 + this->printframe->horizontal/2 + 3, v);
-                printf("  ");
-            }
         }
         this->frame[this->printframe->vertical-1][this->PlayerHorizontal].object = NONE;
         this->frame[this->printframe->vertical-1][this->PlayerHorizontal].health = H_NONE;
@@ -842,12 +891,6 @@ void Game::patchPlayer(Console::xy coor){
         if(this->nowAlertcode != 2){
             this->printframe->printAlert(2);
             this->nowAlertcode = 2;
-            for(int v=0;v<this->printframe->vertical + 2;v++){
-                Console::gotoxy(this->printframe->LeftSpace/2 - 2, v);
-                printf("❯");
-                Console::gotoxy(this->printframe->LeftSpace/2 + this->printframe->horizontal/2 + 3, v);
-                printf("❮");
-            }
         }
     }
 }
@@ -967,6 +1010,53 @@ bool Game::shiftFrame(){
         }
     }
 
+    for(int v=this->printframe->vertical-2;v>=0;v--){ //meteor shift
+        for(int h=0;h<this->printframe->horizontal;h++){
+            if(this->frame[v][h].object == METEOR){ //만약 현재 오브젝트가 meteor이면
+                if(v == this->printframe->vertical-2){
+                    if(this->frame[v+1][h].object == PLAYER){
+                        if(this->PlayerHealth > 1){ //만약 플레이어의 체력이 1보다 크다면
+                            this->PlayerHealth--; //플레이어의 체력을 1 감소시킨다.
+                            this->frame[v+1][h].health = this->PlayerHealth; //체력 감소를 배열에 반영한다.
+                        }else{ //플레이어의 체력이 1 이하라면
+                            return false; //게임 오버
+                        }
+                    }
+                    if(this->frame[v][h].back->object != NONE){
+                        this->frame[v][h].object = this->frame[v][h].back->object;
+                        this->frame[v][h].health = this->frame[v][h].back->health;
+                        this->frame[v][h].back->object = NONE;
+                        this->frame[v][h].back->object = H_NONE;
+                    }else{
+                        this->frame[v][h].object = NONE;
+                        this->frame[v][h].health = H_NONE;
+                    }
+                }
+                else if(this->frame[v][h].back->object > BULLET){ //만약 현재 오브젝트 뒤에 몬스터가 있으면
+                    this->frame[v+1][h].object = METEOR;
+                    this->frame[v+1][h].health = H_METEOR;
+                    this->frame[v][h].object = this->frame[v][h].back->object;
+                    this->frame[v][h].health = this->frame[v][h].back->health;
+                    this->frame[v][h].back->object = NONE;
+                    this->frame[v][h].back->health = H_NONE;
+                }
+                else if(this->frame[v+1][h].object > BULLET){ //만약 다음 줄 오브젝트가 몬스터이면
+                    this->frame[v+1][h].back->object = this->frame[v+1][h].object; //meteor 뒤에 몬스터 오브젝트를 옮긴다.
+                    this->frame[v+1][h].back->health = this->frame[v+1][h].health;
+                    this->frame[v+1][h].object = METEOR;
+                    this->frame[v+1][h].health = H_METEOR;
+                    this->frame[v][h].object = NONE;
+                    this->frame[v][h].health = H_NONE;
+                }else{
+                    this->frame[v+1][h].object = METEOR;
+                    this->frame[v+1][h].health = H_METEOR;
+                    this->frame[v][h].object = NONE;
+                    this->frame[v][h].health = H_NONE;
+                }
+            }
+        }
+    }
+
     for(int v=1;v<this->printframe->vertical-1;v++){ //bullet shift
         for(int h=0;h<this->printframe->horizontal;h++){
             if(this->frame[v][h].object == BULLET){ //만약 현재 오브젝트가 bullet이면
@@ -1029,7 +1119,7 @@ bool Game::shiftFrame(){
                     continue; //이줄 밑의 코드를 실행하지 않고 바로 다음 반복문을 실행한다.
                 }
 
-                if(this->frame[v][h].object == BULLET){ //만약 현재 오브젝트가 bullet이면
+                if(this->frame[v][h].object == BULLET || this->frame[v][h].object == METEOR){ //만약 현재 오브젝트가 bullet이면
                     continue; //이 밑의 코드를 실행하지 않고 바로 다음 반복문을 실행한다. (bullet을 아래 방향으로 shift 하지 않기 위함)
                 }
                 else if(this->frame[v][h].object > BULLET){ //만약 현재 오브젝트가 몬스터(3 이상) 이면
@@ -1148,8 +1238,8 @@ int Game::SCREENmain(){
         }
         else if(event.eventType == E_MOUSE_EVENT){
             if(event.Clicked == true && event.ClickKey == E_MOUSE_LEFT){
-                Console::gotoxy(0, 0);
-                printf("%d %d", event.coordinate.x, event.coordinate.y);
+                //Console::gotoxy(0, 0);
+                //printf("%d %d", event.coordinate.x, event.coordinate.y);
                 if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=35 && event.coordinate.y<=37) return 1; //시작하기
                 else if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=39 && event.coordinate.y<=41) return 2; //종료하기
                 else if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=43 && event.coordinate.y<=45) return 3; //튜토리얼
@@ -1187,7 +1277,8 @@ int main(){
     Game game;
     Console::cursorVisible(false);
 
-    game.printframe->printIntro(); //인트로 프린트
+    Console::sleep(0.5);
+    //game.printframe->printIntro(); //인트로 프린트
 
     todo = game.SCREENmain();
     while(KeepWhile){
