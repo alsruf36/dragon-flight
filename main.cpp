@@ -203,10 +203,11 @@ namespace Console{
     void ErrorExit(LPCSTR lpszMessage){
         fprintf(stderr, "%s\n", lpszMessage);
         SetConsoleMode(hStdin, fdwSaveOldMode);
+        system("pause > nul");
         ExitProcess(0);
     }
 
-    void useMouse(bool status){
+    void useEventInput(bool status){
         if(status == true){
             hStdin = GetStdHandle(STD_INPUT_HANDLE);
             if (hStdin == INVALID_HANDLE_VALUE)
@@ -310,7 +311,7 @@ Frame::Frame(int fps, int horizontal, int vertical){
         this->frame[i] = new Element [this->horizontal];
     }
 
-    this->SkipFramePer = 1;
+    this->SkipFramePer = 2;
     Console::init();
 }
 
@@ -322,21 +323,26 @@ void Frame::print(){
     Console::gotoxy(0, 0);
     Console::setColor(B_WHITE, BLACK);
 
-    for(int i=0;i<this->LeftSpace;i++) printf(" ");
+    Console::gotoxy(this->LeftSpace/2, 0);
     printf("┌");
     for(int v=0;v<this->horizontal;v++) printf("─");
     printf("┐\n");
 
-    for(int v=0;v<this->vertical;v++){
+    int v;
+    for(v=0;v<this->vertical;v++){
         Console::setColor(B_WHITE, BLACK);
-        for(int i=0;i<this->LeftSpace;i++) printf(" ");
+        Console::gotoxy(this->LeftSpace/2, v+1);
         printf("│");
         for(int h=0;h<this->horizontal;h++){
             if(this->frame[v][h].object == NONE){
                 Console::setColor(B_WHITE, BLACK);
                 printf(" ");
             }
-            else if(this->frame[v][h].object <= BULLET){
+            else if(this->frame[v][h].object == BULLET){
+                Console::setColor(B_WHITE, GRAY);
+                printf("%d", this->frame[v][h].health);
+            }
+            else if(this->frame[v][h].object < BULLET){
                 Console::setColor(B_WHITE, BLACK);
                 printf("%d", this->frame[v][h].object);
             }
@@ -354,7 +360,7 @@ void Frame::print(){
         printf("│\n");
     }
 
-    for(int i=0;i<this->LeftSpace;i++) printf(" ");
+    Console::gotoxy(this->LeftSpace/2, v+1);
     printf("└");
     for(int v=0;v<this->horizontal;v++) printf("─");
     printf("┘\n");
@@ -395,7 +401,7 @@ void Frame::printScoreframe(){
 
 void Frame::printScore(int score, int distance, int level, int levelCriteria, int PlayerHealth){
     Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 2);
-    printf("점수 : %dm", score);
+    printf("점수 : %d점", score);
     
     Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 3);
     printf("거리 : %dm", distance);
@@ -543,11 +549,12 @@ class Game{
         bool updateFrame(); //배열을 조작함
         void patchPlayer(Console::xy coor); //플레이어의 가로 위치를 프레임에 패치
         void patchMonster(); //프레임의 맨 윗줄에 몬스터를 패치
-        bool shiftFrame(); //맨 윗줄부터 플레이어 이전 줄을 한 칸 아래로 밂
+        bool shiftFrame(); //맨 윗줄부터 플레이어 이전 줄을 한 칸 아래로 민다.
         void printFrame(); //매 클럭당 출력
         void Over(); //몬스터와 플레이어 충돌시 실행되는 함수
 
-        Element randomMonster(int from, int to);
+        void addScore(int target); //몬스터에 따라 score변수에 점수 추가
+        Element randomMonster(int from, int to); //from부터 to까지 범위에 있는 몬스터를 랜덤으로 뽑아 구조체를 반환
         int score; //플레이어의 점수
         int PlayerHealth; //플레이어의 체력
 
@@ -560,9 +567,9 @@ Game::Game(){ //생성자 : 메인 함수에서 클래스를 선언할 때 선�
     this->frame = this->printframe->frame; //game의 frame과 printframe의 frame이 같은 배열을 가르키도록 주소를 복사
 
     this->levelCriteria = 500; //한 레벨을 올리는 데의 기준
-    this->FrameClock = 10; //FrameClock의 배수 클럭마다 프레임이 갱신이 됨
-    this->patchMonsterClock = 40; //patchMonsterClock의 배수 클럭마다 몬스터가 맨 윗줄에 패치됨
-    this->bulletClock = 10; //bulletClock의 배수 클럭마다 플레이어 바로 윗줄에 bullet이 생성이 됨
+    this->FrameClock = 10; //FrameClock의 배수 클럭마다 프레임이 갱신된다.
+    this->patchMonsterClock = 120; //patchMonsterClock의 배수 클럭마다 몬스터가 맨 윗줄에 패치된다.
+    this->bulletClock = 4; //bulletClock의 배수 클럭마다 플레이어 바로 윗줄에 bullet이 생성이 된다.
 
     this->printframe->consolevertical = this->printframe->vertical + 15; //콘솔창의 가로 길이
     this->printframe->consolehorizontal = this->printframe->horizontal + 170; //콘솔창의 세로 길이
@@ -579,20 +586,20 @@ void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초�
         }
     }
     this->PlayerHealth = H_PLAYER;
-    this->PlayerHorizontal = this->printframe->horizontal/2; //플레이어의 초기 좌표를 설정함 [맨 밑줄 (가로길이/2)번째 칸을 지정]
-    this->frame[this->printframe->vertical-1][this->PlayerHorizontal].object = PLAYER; //PlayerHorizontal 칸을 PLAYER로 지정
-    this->frame[this->printframe->vertical-1][this->PlayerHorizontal].health = this->PlayerHealth; //플레이어의 체력을 설정
+    this->PlayerHorizontal = this->printframe->horizontal/2; //플레이어의 초기 좌표를 설정한다. [맨 밑줄 (가로길이/2)번째 칸을 지정]
+    this->frame[this->printframe->vertical-1][this->PlayerHorizontal].object = PLAYER; //PlayerHorizontal 칸을 PLAYER로 지정한다.
+    this->frame[this->printframe->vertical-1][this->PlayerHorizontal].health = this->PlayerHealth; //플레이어의 체력을 설정한다.
     this->distance = 0; //현재 거리
     this->level = 0; //현재 난이도
     this->score = 0; //점수
     
     srand(time(NULL)); //난수 시드 설정
-    Console::windowSize(this->printframe->consolehorizontal, this->printframe->consolevertical); //윈도우 사이즈를 바꿈
+    Console::windowSize(this->printframe->consolehorizontal, this->printframe->consolevertical); //윈도우 사이즈를 바꾼다.
     Console::cls(); //화면을 초기화
-    Console::cursorVisible(false); //커서를 보이지 않게 함
-    this->printframe->printLogo(); //지정된 위치에 로고를 프린트
-    this->printframe->printScoreframe(); //점수판 위치에 틀 프린트
-    Console::useMouse(true); //마우스 사용을 선언함
+    Console::cursorVisible(false); //커서를 보이지 않게 한다.
+    this->printframe->printLogo(); //지정된 위치에 로고를 프린트한다.
+    this->printframe->printScoreframe(); //점수판 위치에 틀 프린트한다.
+    Console::useEventInput(true); //마우스 사용을 선언한다.
 }
 
 /*
@@ -659,9 +666,10 @@ void Game::makeClock(){
 2. frame 밑에 distance과 levelCriteria을 출력한다.
 */
 void Game::printFrame(){
-    if(this->distance % this->printframe->SkipFramePer == 0) this->printframe->print();
-    Console::gotoxy(0, this->printframe->vertical+2);
-    this->printframe->printScore(this->score, this->distance, this->level, this->levelCriteria, this->PlayerHealth);
+    if(this->distance % this->printframe->SkipFramePer == 0){
+        this->printframe->print();
+        this->printframe->printScore(this->score, this->distance, this->level, this->levelCriteria, this->PlayerHealth);
+    }
 }
 
 /*
@@ -691,6 +699,12 @@ void Game::patchPlayer(Console::xy coor){
     if(coor.x > this->printframe->LeftSpace && coor.x < this->printframe->horizontal + 1 + this->printframe->LeftSpace){
         Console::gotoxy(0, this->printframe->vertical+5);
         printf("                                         ");
+        for(int v=0;v<this->printframe->vertical + 2;v++){
+            Console::gotoxy(this->printframe->LeftSpace/2 - 2, v);
+            printf("  ");
+            Console::gotoxy(this->printframe->LeftSpace/2 + this->printframe->horizontal/2 + 3, v);
+            printf("  ");
+        }
         this->frame[this->printframe->vertical-1][this->PlayerHorizontal].object = NONE;
         this->frame[this->printframe->vertical-1][this->PlayerHorizontal].health = H_NONE;
         this->PlayerHorizontal = coor.x - 1 - this->printframe->LeftSpace;
@@ -701,6 +715,13 @@ void Game::patchPlayer(Console::xy coor){
         Console::setColor(12, 0);
         printf("마우스를 플레이 범위 안으로 옮겨주세요!!");
         Console::setColor(15, 0);
+
+        for(int v=0;v<this->printframe->vertical + 2;v++){
+            Console::gotoxy(this->printframe->LeftSpace/2 - 2, v);
+            printf("❯");
+            Console::gotoxy(this->printframe->LeftSpace/2 + this->printframe->horizontal/2 + 3, v);
+            printf("❮");
+        }
     }
 }
 
@@ -826,12 +847,13 @@ bool Game::shiftFrame(){
                     this->frame[v][h].health--; //bullet의 체력을 1 감소시킨다.
                     this->frame[v-1][h].health--; //몬스터의 체력을 1 감소시킨다.
 
-                    if(this->frame[v][h].health == H_NONE){
+                    if(this->frame[v][h].health == H_NONE){ //bullet의 체력이 0이면 배열에서 삭제한다.
                         this->frame[v][h].object = NONE;
                         this->frame[v][h].health = H_NONE;
                     }
 
-                    if(this->frame[v-1][h].health == H_NONE){
+                    if(this->frame[v-1][h].health == H_NONE){ //몬스터의 체력이 0이면 배열에서 삭제하고, 점수에 추가한다.
+                        this->addScore(this->frame[v-1][h].object); //몬스터에 해당하는 점수를 추가한다.
                         this->frame[v-1][h].object = NONE;
                         this->frame[v-1][h].health = H_NONE;
                     }
@@ -891,6 +913,7 @@ bool Game::shiftFrame(){
                             this->frame[v+1][h].health--; //bullet의 체력을 1 감소시킨다.
                             if(this->frame[v+1][h].health == H_NONE) this->frame[v+1][h].object = NONE; //만약 bullet의 체력이 0이면 NONE으로 바꿔준다.
                         }else{ //만약 몬스터의 체력이 1 이하이면
+                            this->addScore(this->frame[v][h].object); //몬스터에 해당하는 점수를 추가한다.
                             this->frame[v][h].object = NONE; //현재 오브젝트를 제거한다.
                             this->frame[v][h].health = H_NONE;
                             this->frame[v][h].back->object = NONE;
@@ -922,6 +945,34 @@ bool Game::shiftFrame(){
     return true;
 }
 
+void Game::addScore(int target){
+    switch(target){
+        case WHITE_DRAGON:
+            this->score += S_WHITE_DRAGON;
+            break;
+        
+        case YELLOW_DRAGON:
+            this->score += S_YELLOW_DRAGON;
+            break;
+
+        case GREEN_DRAGON:
+            this->score += S_GREEN_DRAGON;
+            break;
+
+        case RED_DRAGON:
+            this->score += S_RED_DRAGON;
+            break;
+
+        case PURPLE_DRAGON:
+            this->score += S_PURPLE_DRAGON;
+            break;
+
+        default:
+            Console::ErrorExit("Error Occured in [Game::addScore()] with error value default");
+            break;
+    }
+}
+
 int Game::SCREENpause(){
     this->printframe->printPause();
     while(1){
@@ -934,19 +985,20 @@ int Game::SCREENpause(){
         }
     }
 
-    Console::useMouse(false);
+    Console::useEventInput(false);
     Console::cls();
+    Console::windowSize(this->printframe->consolehorizontal, this->printframe->consolevertical);
     Console::cursorVisible(false);
     this->printframe->printLogo();
     this->printframe->printScoreframe();
-    Console::useMouse(true);
+    Console::useEventInput(true);
 }
 
 void Game::Over(){
     this->printframe->printGameOver();
 
     //Console::cursorVisible(true);
-    //Console::useMouse(false);
+    //Console::useEventInput(false);
 }
 
 /*
