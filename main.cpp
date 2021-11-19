@@ -40,10 +40,6 @@ Dragon Flight by Mingyeol Kim, Sujung Lee
  동시에 최대 2개의 운석까지 생성이 됩니다.
 
 === 클래스 설명 ===
-class JSON
--> 사용자의 데이터를 저장/로드/관리 하기 위한 클래스입니다.
--> 사용자의 데이터를 json 이라는 데이터 구조를 이용하여 저장/로드합니다.
-
 class Frame
 -> 게임의 화면을 출력하기 위한 클래스입니다.
 -> 매 프레임마다 패치 및 출력을 합니다.
@@ -316,7 +312,7 @@ class Frame{
         void printPause(); //일시정지 화면 프린트
         void printBlank(); //빈 틀을 프린트
         void printLogo(); //로고 프린트
-        void printColorLine(int color, int horizontal); //컬러 라인을 프린트
+        void printColorLine(int textcolor, int backcolor, int horizontal); //컬러 라인을 프린트
         void printScore(int score, int distance, int level, int levelCriteria, int PlayerHealth); //점수 프린트
         void printScoreframe(); //점수 프레임 프린트
         void printGameOver(int score, int distance, int level); //게임 오버 화면 프린트
@@ -347,7 +343,7 @@ Frame::Frame(int fps, int horizontal, int vertical){
 
 /*
 [Frame::print()]
-다음의 알고리즘을 시행합니다.
+다음의 알고리즘을 시행합니다.S
 */
 void Frame::print(){
     Console::gotoxy(0, this->UpperSpace);
@@ -579,12 +575,12 @@ void Frame::printBlank(){
     }
 }
 
-void Frame::printColorLine(int color, int horizontal){
-    Console::setColor(color, color);
+void Frame::printColorLine(int textcolor, int backcolor, int horizontal){
+    Console::setColor(textcolor, backcolor);
 
     for(int i=0;i<this->vertical - 1;i++){
         Console::gotoxy((this->LeftSpace + 1)/2 + horizontal/2, this->UpperSpace + 1 + i);
-        printf("   ");
+        printf(" ! ");
     }
 
     Console::setColor(B_WHITE, BLACK);
@@ -734,6 +730,7 @@ void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초�
     this->distance = 0; //현재 거리
     this->level = 0; //현재 난이도
     this->score = 0; //점수
+    this->printframe->SkipFramePer = 1;
     
     srand(time(NULL)); //난수 시드 설정
     Console::windowSize(this->printframe->consolehorizontal, this->printframe->consolevertical); //윈도우 사이즈를 바꾼다.
@@ -774,7 +771,7 @@ int Game::makeClock(){
 
              if(this->distance % this->levelCriteria == 0){ //만약 distance가 levelCriteria의 배수라면
                 this->level++; //level을 1 증가시킨다.
-                if(this->level % 2 == 0) this->printframe->SkipFramePer++;
+                if(this->level % 3 == 0) this->printframe->SkipFramePer++; //만약 level이 3의 배수면 SkipFramePer을 1 증가시킨다. (체감 속도 증가)
             }
             this->distance++; //distance을 1 증가시킨다.
              
@@ -786,23 +783,23 @@ int Game::makeClock(){
             else if (status == future_status::ready){ //만약 물어봤을때 함수의 반환이 준비가 되었다면
                 Event = coor.get(); //미래에 받겠다고 한 정보를 반환받는다.
 
-                if(Event.eventType == E_MOUSE_EVENT){
-                    this->patchPlayer(Event.coordinate);
-                }else if(Event.eventType == E_KEY_EVENT){
-                    if(Event.keyPressed == true && Event.key == PAUSE_KEY){
-                        int todo = this->SCREENpause();
-                        if(todo == 1){
+                if(Event.eventType == E_MOUSE_EVENT){ //만약 마우스 이벤트가 발생하였다면
+                    this->patchPlayer(Event.coordinate); //플레어의 위치를 패치한다.
+                }else if(Event.eventType == E_KEY_EVENT){ //만약 키보드 이벤트가 발생하였다면
+                    if(Event.keyPressed == true && Event.key == PAUSE_KEY){ //만약 정지 키(defined by PAUSE_KEY)가 눌렸다면
+                        int todo = this->SCREENpause(); //정지 화면을 출력하고, 반환값을 todo에 저장한다.
+                        if(todo == 1){ //만약 todo가 1 이라면(게임 종료)
                             gameStatus = false;
                             break;
                         }
-                        else if(todo == 2){
-                            this->printframe->printBlank();
-                            this->printframe->printLogo();
-                            this->printframe->printAlert(1);
-                            this->nowAlertcode = 1;
-                            this->printframe->printScoreframe();
+                        else if(todo == 2){ //만약 todo가 2 라면(게임 계속하기)
+                            this->printframe->printBlank(); //blank 출력
+                            this->printframe->printLogo(); //로고 출력
+                            this->printframe->printAlert(1); //알림 출력
+                            this->nowAlertcode = 1; //알림 코드 설정
+                            this->printframe->printScoreframe(); //점수 프레임 출력
                         }
-                        else if(todo == 3) this->init();
+                        else if(todo == 3) this->init(); //만약 todo가 3이라면(게임 다시시작) -> init()을 통해 배열이나 체력등을 초기화 한 후 진행
                     }
                 }
 
@@ -860,16 +857,16 @@ bool Game::updateFrame(){
         }
     }else if(this->distance % this->meteorClock == this->meteorClock-21) this->meteorHorizontal = this->PlayerHorizontal;
     else if(this->distance % this->meteorClock >= this->meteorClock-20 && this->distance % this->meteorClock <= this->meteorClock-16)
-        this->printframe->printColorLine(B_GREEN, this->meteorHorizontal);
+        this->printframe->printColorLine(B_WHITE, B_RED, this->meteorHorizontal);
 
     else if(this->distance % this->meteorClock >= this->meteorClock-15 && this->distance % this->meteorClock <= this->meteorClock-11)
-        this->printframe->printColorLine(B_YELLOW, this->meteorHorizontal);
+        this->printframe->printColorLine(B_WHITE, B_PURPLE, this->meteorHorizontal);
     
     else if(this->distance % this->meteorClock >= this->meteorClock-10 && this->distance % this->meteorClock <= this->meteorClock-6)
-        this->printframe->printColorLine(B_PURPLE, this->meteorHorizontal);
+        this->printframe->printColorLine(B_WHITE, B_RED, this->meteorHorizontal);
 
     else if(this->distance % this->meteorClock >= this->meteorClock-5 && this->distance % this->meteorClock <= this->meteorClock-1)
-        this->printframe->printColorLine(B_RED, this->meteorHorizontal);
+        this->printframe->printColorLine(B_WHITE, B_PURPLE, this->meteorHorizontal);
 
     if(this->shiftFrame() == false) return false;
     if(this->distance % this->FrameClock == 0) this->patchMonster();
@@ -1242,7 +1239,6 @@ int Game::SCREENmain(){
         if(event.eventType == E_KEY_EVENT){
             if(event.keyPressed == true && event.key == E_Q_KEY) return 1; //시작하기
             else if(event.keyPressed == true && event.key == E_W_KEY) return 2; //종료하기
-            else if(event.keyPressed == true && event.key == E_E_KEY) return 3; //튜토리얼
         }
         else if(event.eventType == E_MOUSE_EVENT){
             if(event.Clicked == true && event.ClickKey == E_MOUSE_LEFT){
@@ -1250,7 +1246,6 @@ int Game::SCREENmain(){
                 //printf("%d %d", event.coordinate.x, event.coordinate.y);
                 if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=35 && event.coordinate.y<=37) return 1; //시작하기
                 else if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=39 && event.coordinate.y<=41) return 2; //종료하기
-                else if(event.coordinate.x >= 83 && event.coordinate.x <= 96 && event.coordinate.y>=43 && event.coordinate.y<=45) return 3; //튜토리얼
             }
         }
     }
@@ -1302,7 +1297,6 @@ int main(){
         }
         else if(todo == 3){
             //튜토리얼 화면
-            todo = game.SCREENmain();
         }else Console::ErrorExit("Error Occured in [main()] with error variable [todo] value");
     }
 }
