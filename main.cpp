@@ -28,16 +28,14 @@ Dragon Flight by Mingyeol Kim, Sujung Lee
 
 [Dragons, 용]
  - 흰색 : 0m 이후에서 나옵니다. (50점)
- - 노란색 : 250m 이후에서 나옵니다. (100점)
- - 초록색 : 3000m 이후에서 나옵니다. (200점)
- - 빨간색 : 9800m 이후에서 나옵니다. (300점)
- - 보라색 : 17500m 이후에서 나옵니다. (500점)
- - 폭탄(OO색) : 같은 줄의 모든 용을 제거합니다.
+ - 노란색 : 500m 이후에서 나옵니다. (100점)
+ - 초록색 : 1000m 이후에서 나옵니다. (200점)
+ - 빨간색 : 1500m 이후에서 나옵니다. (300점)
+ - 보라색 : 2000m 이후에서 나옵니다. (500점)
 
 [Meteorite, 운석]
  빨간색 느낌표로 줄이 생성되며 운석이 떨어질 것을 예고합니다.
- 운석은 매우 빠른 속력으로 내려오며 2X2 크기입니다.
- 동시에 최대 2개의 운석까지 생성이 됩니다.
+ 운석은 매우 빠른 속력으로 내려오며 1x1 크기입니다.
 
 === 클래스 설명 ===
 class Frame
@@ -48,20 +46,6 @@ class Game
 -> 게임의 논리 구현부 입니다.
 -> 매 클럭마다 플레이어의 위치를 연산하며, 배열을 출력합니다.
 -> 매 프레임 마다 게임 구성 요소(몬스터, 운석, 플레이어와의 충돌 등)를 움직이는 연산을 합니다.
-
-TODO
--> 몬스터 구현 -> 완료
--> 수행 제출 빌드 전 헤더 파일 분리
--> 체력 표시 : 몬스터의 밝기로 판단
-
--> 몬스터 체력 구현을 위하여 기존 배열을 구조체로 바꾸기 -> 완료
--> 위와 같이 구현할 시 
-
--> 몬스터에 따라 점수 추가하기
--> 15 by 5 배열로 구성 or 출력되는 몬스터의 좌측 좌표를 기준으로 출력
--> 게임 오버 구현
-
--> 메인 화면 만들기
 */
 
 //IO 컨트롤
@@ -146,19 +130,19 @@ typedef struct Element{
 } Element;
 
 //콘솔창 제어 함수
-namespace Console{
+namespace Console{ //콘솔을 제어할 함수들을 모아놓은 이름 공간
     HANDLE hStdin;
     DWORD fdwSaveOldMode;
     DWORD cNumRead, fdwMode, i;
     INPUT_RECORD irInBuf;
     int counter = 0;
 
-    typedef struct xy{
+    typedef struct xy{ //좌표 반환을 위해 설계한 구조체
         int x;
         int y;
     } xy;
 
-    typedef struct eventStruct{
+    typedef struct eventStruct{ //마우스와 키보드 이벤트 반환을 위해 설계한 구조체
         int eventType;
         int key;
         bool keyPressed;
@@ -167,25 +151,25 @@ namespace Console{
         xy coordinate;
     } eventStruct;
 
-    void init(){
+    void init(){ //인코딩을 UTF-8로 바꾸고, 콘솔창 제목을 설정
         system("chcp 65001");
         SetConsoleTitle(TEXT("dragon flight"));
     }
 
-    void sleep(float sec){
+    void sleep(float sec){ //sec초 만큼 정지
         Sleep(sec * 1000.0);
     }
 
-    void cls(){
+    void cls(){ //화면을 초기화
         system("cls");
     }
 
-    void windowSize(int x, int y){
+    void windowSize(int x, int y){ //윈도우 사이즈를 바꿈
         string query = "mode con cols=" + to_string(x) + " lines=" + to_string(y);
         system(&query[0]);
     }
 
-    void cursorVisible(bool status){
+    void cursorVisible(bool status){ //커서의 표시 여부
         CONSOLE_CURSOR_INFO cursorInfo = { 0, };
         cursorInfo.dwSize = 100;
         if(status == true) cursorInfo.bVisible = TRUE; 
@@ -193,25 +177,25 @@ namespace Console{
         SetConsoleCursorInfo(GetStdHandle(STD_OUTPUT_HANDLE), &cursorInfo);
     }
 
-    void gotoxy(int x, int y){
+    void gotoxy(int x, int y){ //커서를 (x, y)로 이동
         COORD Pos;
         Pos.X = 2 * x;
         Pos.Y = y;
         SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), Pos);
     }
 
-    void setColor(int text, int back){
+    void setColor(int text, int back){ //글자색과 배경색을 바꿈
         SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), text | (back << 4));
     }
 
-    void ErrorExit(LPCSTR lpszMessage){
+    void ErrorExit(LPCSTR lpszMessage){ //lpszMessage를 출력 후 프로그램 종료
         fprintf(stderr, "%s\n", lpszMessage);
         SetConsoleMode(hStdin, fdwSaveOldMode);
         system("pause > nul");
         ExitProcess(0);
     }
 
-    void useEventInput(bool status){
+    void useEventInput(bool status){ //이벤트 입력(마우스 / 키보드)을 사용할지 결정
         if(status == true){
             hStdin = GetStdHandle(STD_INPUT_HANDLE);
             if (hStdin == INVALID_HANDLE_VALUE)
@@ -229,7 +213,7 @@ namespace Console{
         }
     }
     
-    void getEvent(eventStruct* event){
+    void getEvent(eventStruct* event){ //발생한 이벤트를 event에 저장
         if (!ReadConsoleInput(hStdin, &irInBuf, 1, &cNumRead))
             ErrorExit("ReadConsoleInput");
         
@@ -265,7 +249,7 @@ namespace Console{
         }
     }
 
-    void waitEvent(promise<eventStruct> *p){
+    void waitEvent(promise<eventStruct> *p){ //이벤트를 기다릴 스레드 함수
         eventStruct event;
         event.eventType = NONE;
         while(event.eventType == NONE){
@@ -274,7 +258,7 @@ namespace Console{
         p->set_value(event);
     }
 
-    void moveWindowCenter(){
+    void moveWindowCenter(){ //콘솔창을 화면 정가운데로 옮김
         HWND hwndmoveWindow = GetConsoleWindow();
 
         RECT consoleWindow;
@@ -285,7 +269,7 @@ namespace Console{
         ::SetWindowPos(hwndmoveWindow, HWND_TOPMOST, (screenSize.x - consoleWindowSize.x)/2, (screenSize.y - consoleWindowSize.y)/2, 0, 0, SWP_NOSIZE | SWP_NOREDRAW );
     }
 
-    void moveWindowCoordinate(int x, int y){
+    void moveWindowCoordinate(int x, int y){ //콘솔창을 죄측 상단을 기준으로 (x, y)로 이동
         HWND hwndmoveWindow = GetConsoleWindow();
         ::SetWindowPos(hwndmoveWindow, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOREDRAW );
     }
@@ -343,9 +327,10 @@ Frame::Frame(int fps, int horizontal, int vertical){
 
 /*
 [Frame::print()]
-다음의 알고리즘을 시행합니다.S
+다음의 알고리즘을 시행합니다.
+1. frame 배열을 프린트합니다. (배경색은 Element, 숫자는 체력을 의미한다.)
 */
-void Frame::print(){
+void Frame::print(){ //게임중 배열을 프린트
     Console::gotoxy(0, this->UpperSpace);
 
     if(this->alertcode == 2) Console::setColor(B_RED, BLACK);
@@ -433,7 +418,7 @@ void Frame::printAlert(int alertcode){
     }
 }
 
-void Frame::printLogo(){
+void Frame::printLogo(){ //게임중 로고를 프린트
     int nowline = 0;
     string line;
     fstream logo;
@@ -445,7 +430,7 @@ void Frame::printLogo(){
     }
 }
 
-void Frame::printScoreframe(){
+void Frame::printScoreframe(){ //게임중 스코어보드 틀을 프린트
     Console::gotoxy(this->horizontal, this->ScoreboardHeight);
     printf("┌");
     for(int h=0;h<22;h++) printf("─");
@@ -466,7 +451,7 @@ void Frame::printScoreframe(){
 }
 
 
-void Frame::printScore(int score, int distance, int level, int levelCriteria, int PlayerHealth){
+void Frame::printScore(int score, int distance, int level, int levelCriteria, int PlayerHealth){ //게임중 스코어보드 내에 내용을 출력
     Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 2);
     printf("점수 : %d점", score);
     
@@ -487,7 +472,7 @@ void Frame::printScore(int score, int distance, int level, int levelCriteria, in
     printf("현재 페이즈 [%.1lf%] ", ((double)(distance % levelCriteria)/(double)levelCriteria)*(double)100);
 }
 
-void Frame::printMain(){
+void Frame::printMain(){ //메인 화면을 출력
     Console::windowSize(this->consolehorizontal,  this->consolevertical + 20);
     Console::moveWindowCenter();
     Console::gotoxy(0, 0);
@@ -527,7 +512,7 @@ void Frame::printMain(){
     printf("튜토리얼 [E]");
 }
 
-void Frame::printPause(){
+void Frame::printPause(){ //일시정지 화면을 출력
     Console::moveWindowCenter();
     Console::gotoxy(0, 0);
     printf("┌");
@@ -541,7 +526,7 @@ void Frame::printPause(){
         printf("│");
     }
 
-    Console::gotoxy(0, this->consolevertical - 1);
+    Console::gotoxy(0, this->consolevertical - 1); 
     printf("└");
     for(int i=0;i<this->consolehorizontal - 3;i++) printf("─");
     printf("┘");
@@ -566,7 +551,7 @@ void Frame::printPause(){
     printf("다시시작 [E]");
 }
 
-void Frame::printBlank(){
+void Frame::printBlank(){ //아무것도 없는 화면을 출력
     Console::gotoxy(0, 0);
 
     for(int i=0;i<this->consolevertical;i++){
@@ -575,7 +560,7 @@ void Frame::printBlank(){
     }
 }
 
-void Frame::printColorLine(int textcolor, int backcolor, int horizontal){
+void Frame::printColorLine(int textcolor, int backcolor, int horizontal){ //운석이 떨어질 것을 알리는 선을 출력
     Console::setColor(textcolor, backcolor);
 
     for(int i=0;i<this->vertical - 1;i++){
@@ -586,7 +571,7 @@ void Frame::printColorLine(int textcolor, int backcolor, int horizontal){
     Console::setColor(B_WHITE, BLACK);
 }
 
-void Frame::printGameOver(int score, int distance, int level){
+void Frame::printGameOver(int score, int distance, int level){ //게임 오버 화면을 출력
     Console::moveWindowCenter();
     Console::gotoxy(0, 0);
     printf("┌");
@@ -634,7 +619,7 @@ void Frame::printGameOver(int score, int distance, int level){
     printf("%d 페이즈 달성!", level);
 }
 
-void Frame::printIntro(){
+void Frame::printIntro(){ //게임 시작시 인트로 출력
     Console::windowSize(166, 47);
     Console::moveWindowCenter();
     for(int i=82;i>0;i--){
@@ -1166,7 +1151,7 @@ bool Game::shiftFrame(){
     return true;
 }
 
-void Game::addScore(int target){
+void Game::addScore(int target){ //target에 대응되는 점수를 score에 더한다.
     switch(target){
         case WHITE_DRAGON:
             this->score += S_WHITE_DRAGON;
@@ -1194,7 +1179,7 @@ void Game::addScore(int target){
     }
 }
 
-int Game::SCREENpause(){
+int Game::SCREENpause(){ //일시정지 화면 출력 함수를 호출 후 키보드와 마우스 입력을 감지하여 알맞는 반환값을 반환한다.
     this->printframe->printPause();
     Console::useEventInput(true);
     while(1){
@@ -1230,9 +1215,9 @@ int Game::SCREENpause(){
     Console::useEventInput(true);
 }
 
-int Game::SCREENmain(){
+int Game::SCREENmain(){ //
     this->printframe->printMain();
-    Console::useEventInput(true); //마우스 사용을 선언한다.
+    Console::useEventInput(true); //메인 화면 출력 함수를 호출 후 키보드와 마우스 입력을 감지하여 알맞는 반환값을 반환한다.
     while(1){
         Console::eventStruct event;
         Console::getEvent(&event);
@@ -1251,7 +1236,7 @@ int Game::SCREENmain(){
     }
 }
 
-int Game::SCREENover(){
+int Game::SCREENover(){ //게임 오버 화면 출력 함수를 호출 후 키보드와 마우스 입력을 감지하여 알맞는 반환값을 반환한다.
     this->printframe->printGameOver(this->score, this->distance, this->level);
     Console::useEventInput(true); //마우스 사용을 선언한다.
     while(1){
