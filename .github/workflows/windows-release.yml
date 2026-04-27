@@ -127,12 +127,16 @@ jobs:
           $releaseAssets = Join-Path $releaseDir 'assets'
           $releaseExe = Join-Path $releaseDir 'dragon-flight.exe'
           $toolDir = Split-Path $bat2exe -Parent
+          $extractDir = Join-Path $env:SystemRoot 'Temp'
           $argumentList = @(
             '/bat', $batchFile,
             '/exe', $portableExe,
             '/include', $releaseAssets,
             '/include', $releaseExe,
             '/workdir', $releaseDir,
+            '/extractdir', $extractDir,
+            '/uac-admin',
+            '/delete-on-exit',
             '/x64',
             '/invisible'
           )
