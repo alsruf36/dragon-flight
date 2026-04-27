@@ -1,0 +1,7 @@
+dist
+main.exe
+.git
+.gitignore
+.vscode
+tmp
+__pycache__

@@ -1,0 +1,157 @@
+name: build-windows-release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feature/web
+    tags:
+      - 'v*'
+
+env:
+  FFMPEG_VERSION: 7.1.1
+  FFMPEG_ARCHIVE: ffmpeg-release-essentials.zip
+  FFMPEG_URL: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pillow
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          cache: true
+          install: >-
+            mingw-w64-x86_64-gcc
+
+      - name: Restore FFmpeg cache
+        id: ffmpeg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/ffmpeg
+          key: ${{ runner.os }}-ffmpeg-${{ env.FFMPEG_VERSION }}
+
+      - name: Download FFmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP $env:FFMPEG_ARCHIVE
+          $dest = Join-Path $env:GITHUB_WORKSPACE '.cache/ffmpeg'
+
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Invoke-WebRequest -Uri $env:FFMPEG_URL -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+
+      - name: Save FFmpeg cache
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/ffmpeg
+          key: ${{ runner.os }}-ffmpeg-${{ env.FFMPEG_VERSION }}
+
+      - name: Add FFmpeg to PATH
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/.cache/ffmpeg" -Recurse -Directory |
+            Where-Object { $_.Name -eq 'bin' } |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if (-not $bin) {
+            throw "FFmpeg bin directory not found"
+          }
+
+          $bin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Verify FFmpeg
+        shell: pwsh
+        run: ffmpeg -version
+
+      - name: Build Windows executable
+        shell: msys2 {0}
+        run: >-
+          g++ -std=c++17 -O2
+          -static-libgcc -static-libstdc++
+          -Wl,-Bstatic
+          -lstdc++
+          -lpthread
+          -Wl,-Bstatic,--whole-archive
+          -lwinpthread
+          -Wl,-Bdynamic
+          -Wl,--no-whole-archive
+          main.cpp
+          -o "dragon flight.exe"
+
+      - name: Generate ASCII intro assets
+        shell: pwsh
+        run: >-
+          python generator.py
+          --frame-dir "$env:RUNNER_TEMP/intro_frames"
+          --ascii-dir "$env:GITHUB_WORKSPACE/out/dragon-flight/assets/intro"
+          --frame-limit 82
+
+      - name: Package release layout
+        shell: pwsh
+        run: |
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE 'out/dragon-flight'
+          $assetDir = Join-Path $releaseDir 'assets'
+          $logoDir = Join-Path $assetDir 'logo'
+          New-Item -ItemType Directory -Force -Path $logoDir | Out-Null
+          Copy-Item -Path 'assets/logo/*' -Destination $logoDir -Recurse -Force
+          Copy-Item -Path 'dragon flight.exe' -Destination (Join-Path $releaseDir 'dragon-flight.exe') -Force
+
+      - name: Build portable wrapper executable
+        shell: pwsh
+        run: |
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE 'out/dragon-flight'
+          $portableExe = Join-Path $env:GITHUB_WORKSPACE 'out/dragon-flight-portable.exe'
+          $bat2exe = Join-Path $env:GITHUB_WORKSPACE 'assets/pkg/bat2exe.exe'
+          $batchFile = Join-Path $env:GITHUB_WORKSPACE 'assets/pkg/execution.bat'
+          $releaseAssets = Join-Path $releaseDir 'assets'
+          $releaseExe = Join-Path $releaseDir 'dragon-flight.exe'
+          $toolDir = Split-Path $bat2exe -Parent
+          $argumentList = @(
+            '/bat', $batchFile,
+            '/exe', $portableExe,
+            '/include', $releaseAssets,
+            '/include', $releaseExe,
+            '/workdir', $releaseDir,
+            '/delete-on-exit',
+            '/x64',
+            '/invisible'
+          )
+          Start-Process -FilePath $bat2exe -ArgumentList $argumentList -WorkingDirectory $toolDir -Wait
+          if (!(Test-Path $portableExe)) {
+            Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Filter 'dragon-flight-portable*.exe' | Select-Object FullName
+            throw 'Portable executable was not created.'
+          }
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dragon-flight-windows
+          path: out/dragon-flight-portable.exe
+          if-no-files-found: error
+
+      - name: Attach portable executable to GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/dragon-flight-portable.exe

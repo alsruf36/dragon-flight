@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dragon Flight Web</title>
+  <style>
+    @font-face {
+      font-family: 'Nanum Gothic Coding Web';
+      src: url('./assets/fonts/NanumGothicCoding.ttf') format('truetype');
+      font-weight: 400;
+      font-style: normal;
+      font-display: block;
+    }
+    body {
+      margin: 0;
+      background: #000;
+      color: #c9d1d9;
+      font-family: 'Nanum Gothic Coding Web', Arial, sans-serif;
+    }
+    #app {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 12px;
+    }
+    #controls {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    #status {
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: #8b949e;
+    }
+    canvas.emscripten {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #000;
+      border: 0;
+      outline: none;
+      box-shadow: none;
+      image-rendering: pixelated;
+    }
+    canvas.emscripten:focus,
+    canvas.emscripten:focus-visible,
+    button:focus,
+    button:focus-visible {
+      outline: none;
+      box-shadow: none;
+    }
+    #output {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="controls">
+      <button id="fullscreen-button" type="button">전체화면</button>
+    </div>
+    <div id="status">Loading...</div>
+    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    <textarea id="output" rows="8"></textarea>
+  </div>
+
+  <script>
+    var statusElement = document.getElementById('status');
+    var canvasElement = document.getElementById('canvas');
+    var outputElement = document.getElementById('output');
+    var fullscreenButton = document.getElementById('fullscreen-button');
+
+    document.fonts.load("16px 'Nanum Gothic Coding Web'");
+
+    var Module = {
+      print: (function() {
+        if (outputElement) outputElement.value = '';
+        return function(text) {
+          if (arguments.length > 1) {
+            text = Array.prototype.slice.call(arguments).join(' ');
+          }
+          console.log(text);
+          if (outputElement) {
+            outputElement.value += text + "\n";
+            outputElement.scrollTop = outputElement.scrollHeight;
+          }
+        };
+      })(),
+      canvas: canvasElement,
+      setStatus: function(text) {
+        if (statusElement) {
+          statusElement.textContent = text || '';
+        }
+      },
+      monitorRunDependencies: function(left) {
+        if (left > 0) {
+          Module.setStatus('Preparing...');
+        } else {
+          Module.setStatus('Ready');
+        }
+      }
+    };
+
+    window.onerror = function(message) {
+      Module.setStatus('Exception thrown, see JavaScript console');
+      if (message) {
+        console.error(message);
+      }
+    };
+  </script>
+  {{{ SCRIPT }}}
+  <script>
+    fullscreenButton.addEventListener('click', function() {
+      var canvas = Module.canvas;
+      if (!canvas) return;
+
+      if (canvas.requestFullscreen) {
+        canvas.requestFullscreen();
+      } else if (canvas.webkitRequestFullscreen) {
+        canvas.webkitRequestFullscreen();
+      } else if (canvas.msRequestFullscreen) {
+        canvas.msRequestFullscreen();
+      }
+    });
+  </script>
+</body>
+</html>

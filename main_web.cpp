@@ -51,109 +51,30 @@ class Game
 //IO 컨트롤
 #include <iostream>
 #include <string>
-#include <vector>
 #include <algorithm>
 #include <thread>
 #include <future>
 #include <chrono>
 #include <fstream>
 #include <sstream>
-#include <stdlib.h>
-#include <time.h>
-#include <conio.h>
-#include <Windows.h>
-#include <tchar.h>
-#include <shlobj.h>
-#include <shellapi.h>
-#include <exdisp.h>
+#include <vector>
+#include <deque>
+#include <mutex>
+#include <streambuf>
+#include <cstdarg>
+#include <cctype>
+#include <cstdint>
+#include <cstdlib>
+#include <cstdio>
+#include <ctime>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include <emscripten/html5.h>
+#endif
 using namespace std;
 
-namespace Startup{
-    const wchar_t* RELAUNCH_GUARD = L"DRAGON_FLIGHT_CONHOST_RELAUNCHED";
-
-    wstring quoteArg(const wstring& arg){
-        wstring quoted = L"\"";
-        int backslashCount = 0;
-
-        for(wchar_t ch : arg){
-            if(ch == L'\\'){
-                backslashCount++;
-            }
-            else if(ch == L'\"'){
-                quoted.append(backslashCount * 2 + 1, L'\\');
-                quoted += ch;
-                backslashCount = 0;
-            }
-            else{
-                if(backslashCount > 0){
-                    quoted.append(backslashCount, L'\\');
-                    backslashCount = 0;
-                }
-                quoted += ch;
-            }
-        }
-
-        if(backslashCount > 0) quoted.append(backslashCount * 2, L'\\');
-        quoted += L"\"";
-        return quoted;
-    }
-
-    bool shouldRelaunchInClassicConsole(){
-        if(GetEnvironmentVariableW(RELAUNCH_GUARD, NULL, 0) > 0) return false;
-        return GetEnvironmentVariableW(L"WT_SESSION", NULL, 0) > 0;
-    }
-
-    bool relaunchInClassicConsole(){
-        int argc = 0;
-        LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-        if(argv == NULL) return false;
-
-        wchar_t exePath[MAX_PATH];
-        if(GetModuleFileNameW(NULL, exePath, MAX_PATH) == 0){
-            LocalFree(argv);
-            return false;
-        }
-
-        wstring command = L"conhost.exe -- ";
-        command += quoteArg(exePath);
-        for(int i = 1; i < argc; i++){
-            command += L" ";
-            command += quoteArg(argv[i]);
-        }
-        LocalFree(argv);
-
-        SetEnvironmentVariableW(RELAUNCH_GUARD, L"1");
-
-        STARTUPINFOW si = { 0, };
-        PROCESS_INFORMATION pi = { 0, };
-        si.cb = sizeof(si);
-
-        vector<wchar_t> mutableCommand(command.begin(), command.end());
-        mutableCommand.push_back(L'\0');
-
-        BOOL created = CreateProcessW(
-            NULL,
-            mutableCommand.data(),
-            NULL,
-            NULL,
-            FALSE,
-            CREATE_NEW_CONSOLE,
-            NULL,
-            NULL,
-            &si,
-            &pi
-        );
-
-        if(created == TRUE){
-            CloseHandle(pi.hProcess);
-            CloseHandle(pi.hThread);
-            return true;
-        }
-
-        SetEnvironmentVariableW(RELAUNCH_GUARD, NULL);
-        return false;
-    }
-}
+typedef const char* LPCSTR;
 
 //색깔 정의
 #define BLACK 0 //어두움
@@ -220,10 +141,6 @@ typedef struct Element{
 
 //콘솔창 제어 함수
 namespace Console{ //콘솔을 제어할 함수들을 모아놓은 이름 공간
-    HANDLE hStdin;
-    DWORD fdwSaveOldMode;
-    DWORD cNumRead, fdwMode, i;
-    INPUT_RECORD irInBuf;
     int counter = 0;
 
     typedef struct xy{ //좌표 반환을 위해 설계한 구조체
@@ -236,106 +153,655 @@ namespace Console{ //콘솔을 제어할 함수들을 모아놓은 이름 공간
         int key;
         bool keyPressed;
         bool Clicked;
-        bool ClickKey;
+        int ClickKey;
         xy coordinate;
     } eventStruct;
 
-    void init(){ //인코딩을 UTF-8로 바꾸고, 콘솔창 제목을 설정
-        SetConsoleOutputCP(CP_UTF8);
-        SetConsoleCP(CP_UTF8);
-        SetConsoleTitle(TEXT("dragon flight"));
+    typedef struct Cell{
+        uint32_t ch;
+        unsigned char text;
+        unsigned char back;
+        bool continuation;
+    } Cell;
+
+    static int consoleWidth = 180;
+    static int consoleHeight = 55;
+    static int cursorX = 0;
+    static int cursorY = 0;
+    static int currentText = B_WHITE;
+    static int currentBack = BLACK;
+    static bool visibleCursor = true;
+    static bool eventEnabled = false;
+    static bool initialized = false;
+    static bool needRender = true;
+
+    static vector<Cell> cells;
+    static deque<eventStruct> eventQueue;
+    static mutex eventLock;
+
+    static int clampInt(int value, int lower, int upper){
+        if(upper < lower) return lower;
+        if(lower == upper) return lower;
+        if(value < lower) return lower;
+        if(value > upper) return upper;
+        return value;
     }
 
+    static int frameLeft = 6;
+    static int frameTop = 4;
+    static int frameWidth = 15;
+    static int frameHeight = 25;
+
+    static bool isWithin(int value, int minInclusive, int maxExclusive){
+        return value >= minInclusive && value < maxExclusive;
+    }
+
+    static int mapRange(int value, int srcMin, int srcMaxExclusive, int dstMin, int dstMaxExclusive){
+        int srcRange = srcMaxExclusive - srcMin;
+        int dstRange = dstMaxExclusive - dstMin;
+        if(srcRange <= 0 || dstRange <= 0) return dstMin;
+
+        int rel = value - srcMin;
+        if(rel < 0) rel = 0;
+        if(rel >= srcRange) rel = srcRange - 1;
+
+        int mapped = dstMin + (rel * dstRange) / srcRange;
+        if(mapped < dstMin) mapped = dstMin;
+        if(mapped >= dstMaxExclusive) mapped = dstMaxExclusive - 1;
+        return mapped;
+    }
+
+    static xy mapCoordinateToConsole(int px, int py, int canvasW, int canvasH){
+        if(canvasW <= 0) canvasW = 1;
+        if(canvasH <= 0) canvasH = 1;
+
+        xy result;
+
+        int boardStartX = frameLeft + 1;
+        int boardEndX = boardStartX + frameWidth;
+        int boardStartY = frameTop + 1;
+        int boardEndY = boardStartY + frameHeight;
+
+        if(isWithin(px, boardStartX, boardEndX)){
+            result.x = mapRange(px, boardStartX, boardEndX, 0, canvasW);
+        }else if(isWithin(px, 83, 97)){
+            result.x = mapRange(px, 83, 97, 0, canvasW);
+        }else if(isWithin(px, 0, consoleWidth)){
+            result.x = mapRange(px, 0, consoleWidth, 0, canvasW);
+        }else{
+            result.x = clampInt((int)((double)px * (double)canvasW / (double)max(1, consoleWidth)), 0, canvasW - 1);
+        }
+
+        if(isWithin(py, boardStartY, boardEndY)){
+            result.y = mapRange(py, boardStartY, boardEndY, 0, canvasH);
+        }else if(isWithin(py, 14, 17)){
+            result.y = mapRange(py, 14, 17, 0, canvasH);
+        }else if(isWithin(py, 18, 21)){
+            result.y = mapRange(py, 18, 21, 0, canvasH);
+        }else if(isWithin(py, 22, 25)){
+            result.y = mapRange(py, 22, 25, 0, canvasH);
+        }else if(isWithin(py, 35, 38)){
+            result.y = mapRange(py, 35, 38, 0, canvasH);
+        }else if(isWithin(py, 39, 42)){
+            result.y = mapRange(py, 39, 42, 0, canvasH);
+        }else if(isWithin(py, 0, consoleHeight)){
+            result.y = mapRange(py, 0, consoleHeight, 0, canvasH);
+        }else{
+            result.y = clampInt((int)((double)py * (double)canvasH / (double)max(1, consoleHeight)), 0, canvasH - 1);
+        }
+
+        return result;
+    }
+
+    static xy mapCoordinateFromCanvas(int cx, int cy, int canvasW, int canvasH){
+        if(canvasW <= 0) canvasW = 1;
+        if(canvasH <= 0) canvasH = 1;
+
+        xy result;
+        result.x = clampInt(mapRange(cx, 0, canvasW, 0, consoleWidth), 0, consoleWidth - 1);
+        result.y = clampInt(mapRange(cy, 0, canvasH, 0, consoleHeight), 0, consoleHeight - 1);
+        return result;
+    }
+
+    static void ensureCellBuffer(){
+        if(consoleWidth < 1) consoleWidth = 1;
+        if(consoleHeight < 1) consoleHeight = 1;
+        cells.assign(consoleWidth * consoleHeight, Cell{(uint32_t)' ', (unsigned char)B_WHITE, (unsigned char)BLACK, false});
+        cursorX = clampInt(cursorX, 0, consoleWidth - 1);
+        cursorY = clampInt(cursorY, 0, consoleHeight - 1);
+        needRender = true;
+    }
+
+    static void clearEvents(){
+        lock_guard<mutex> lock(eventLock);
+        eventQueue.clear();
+    }
+
+    static void pushEvent(const eventStruct& event){
+        lock_guard<mutex> lock(eventLock);
+        eventQueue.push_back(event);
+    }
+
+    static bool popEvent(eventStruct* event){
+        lock_guard<mutex> lock(eventLock);
+        if(eventQueue.empty()) return false;
+        *event = eventQueue.front();
+        eventQueue.pop_front();
+        return true;
+    }
+
+#ifdef __EMSCRIPTEN__
+    EM_JS(void, webConsoleSetup, (), {
+        var canvas = Module['canvas'];
+        if (!canvas) {
+            canvas = document.createElement('canvas');
+            canvas.id = 'canvas';
+            document.body.appendChild(canvas);
+            Module['canvas'] = canvas;
+        }
+
+        canvas.width = 1600;
+        canvas.height = 900;
+        canvas.style.width = '100vw';
+        canvas.style.maxWidth = '1600px';
+        canvas.style.height = 'auto';
+        canvas.style.display = 'block';
+        canvas.style.margin = '0 auto';
+        canvas.style.background = '#000000';
+        canvas.style.imageRendering = 'pixelated';
+        canvas.style.outline = 'none';
+        canvas.style.boxShadow = 'none';
+        canvas.tabIndex = -1;
+
+        document.body.style.margin = '0';
+        document.body.style.background = '#000000';
+
+        var notice = document.getElementById('dragon-flight-web-notice');
+        if (!notice) {
+            notice = document.createElement('div');
+            notice.id = 'dragon-flight-web-notice';
+            notice.style.color = '#c9d1d9';
+            notice.style.fontFamily = 'monospace';
+            notice.style.fontSize = '14px';
+            notice.style.maxWidth = '1600px';
+            notice.style.margin = '12px auto';
+            notice.style.padding = '0 10px';
+            notice.textContent = 'Dragon Flight Web - 마우스로 이동, Q/W/E 키 입력';
+            var parent = canvas.parentNode || document.body;
+            parent.insertBefore(notice, canvas);
+        }
+
+    });
+
+    EM_JS(int, webCanvasClientWidth, (), {
+        var canvas = Module['canvas'];
+        if (!canvas) return 0;
+        var rect = canvas.getBoundingClientRect();
+        return Math.max(1, Math.round(rect.width || canvas.clientWidth || canvas.width || 0));
+    });
+
+    EM_JS(int, webCanvasClientHeight, (), {
+        var canvas = Module['canvas'];
+        if (!canvas) return 0;
+        var rect = canvas.getBoundingClientRect();
+        return Math.max(1, Math.round(rect.height || canvas.clientHeight || canvas.height || 0));
+    });
+
+    EM_JS(void, webConsoleRender,
+          (int width, int height, const uint32_t* chars, const unsigned char* text, const unsigned char* back,
+           const unsigned char* continuation, int cursorVisible, int cx, int cy), {
+        var canvas = Module['canvas'];
+        if (!canvas) return;
+
+        var ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        var total = width * height;
+        var heapChar = HEAPU32.subarray(chars >> 2, (chars >> 2) + total);
+        var heapText = HEAPU8.subarray(text, text + total);
+        var heapBack = HEAPU8.subarray(back, back + total);
+        var heapContinuation = HEAPU8.subarray(continuation, continuation + total);
+
+        var palette = [
+            '#000000', '#000080', '#008000', '#008080', '#800000', '#800080', '#808000', '#c0c0c0',
+            '#808080', '#5555ff', '#55ff55', '#55ffff', '#ff5555', '#ff55ff', '#ffff55', '#ffffff'
+        ];
+
+        var cw = canvas.width / width;
+        var ch = canvas.height / height;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
+        var fontPx = Math.max(8, Math.min(ch - 2, cw * 1.6));
+        ctx.font = fontPx + 'px "Nanum Gothic Coding Web", "Nanum Gothic Coding", "D2Coding", "Noto Sans Mono CJK KR", "Malgun Gothic", "Apple SD Gothic Neo", "Courier New", Consolas, monospace';
+
+        for (var y = 0; y < height; y++) {
+            for (var x = 0; x < width; x++) {
+                var idx = y * width + x;
+                var px = x * cw;
+                var py = y * ch;
+                ctx.fillStyle = palette[heapBack[idx] & 15];
+                ctx.fillRect(px, py, Math.ceil(cw), Math.ceil(ch));
+            }
+        }
+
+        for (var y = 0; y < height; y++) {
+            for (var x = 0; x < width; x++) {
+                var idx = y * width + x;
+                var px = x * cw;
+                var py = y * ch;
+
+                if (heapContinuation[idx]) {
+                    continue;
+                }
+
+                var codepoint = heapChar[idx];
+                if (codepoint !== 0 && codepoint !== 32) {
+                    ctx.fillStyle = palette[heapText[idx] & 15];
+                    var isWide = codepoint >= 0x1100 && (
+                        (codepoint <= 0x115F) ||
+                        (codepoint >= 0x2329 && codepoint <= 0x232A) ||
+                        (codepoint >= 0x2E80 && codepoint <= 0xA4CF) ||
+                        (codepoint >= 0xAC00 && codepoint <= 0xD7A3) ||
+                        (codepoint >= 0xF900 && codepoint <= 0xFAFF) ||
+                        (codepoint >= 0xFE10 && codepoint <= 0xFE19) ||
+                        (codepoint >= 0xFE30 && codepoint <= 0xFE6F) ||
+                        (codepoint >= 0xFF01 && codepoint <= 0xFF60) ||
+                        (codepoint >= 0xFFE0 && codepoint <= 0xFFE6)
+                    );
+                    var drawText = String.fromCodePoint(codepoint);
+                    var drawWidth = isWide ? cw * 2 : cw;
+                    var measured = ctx.measureText(drawText).width || drawWidth;
+                    var scaleX = measured > 0 ? Math.min(1, drawWidth / measured) : 1;
+                    var offsetX = Math.max(0, (drawWidth - measured * scaleX) / 2);
+                    ctx.save();
+                    ctx.translate(px + offsetX, py);
+                    ctx.scale(scaleX, 1);
+                    ctx.fillText(drawText, 0, 0);
+                    ctx.restore();
+                }
+            }
+        }
+
+        if (cursorVisible) {
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(cx * cw + 1, cy * ch + 1, Math.max(1, cw - 2), Math.max(1, ch - 2));
+        }
+    });
+
+    static xy mapMouseCoordinate(int x, int y){
+        int canvasW = 1600;
+        int canvasH = 900;
+        int clientW = 0;
+        int clientH = 0;
+        emscripten_get_canvas_element_size("#canvas", &canvasW, &canvasH);
+        clientW = webCanvasClientWidth();
+        clientH = webCanvasClientHeight();
+        if(clientW > 0) canvasW = clientW;
+        if(clientH > 0) canvasH = clientH;
+        if(canvasW < 1) canvasW = 1;
+        if(canvasH < 1) canvasH = 1;
+
+        return mapCoordinateFromCanvas(x, y, canvasW, canvasH);
+    }
+
+    static EM_BOOL mouseMoveCallback(int, const EmscriptenMouseEvent* e, void*){
+        if(eventEnabled == false) return EM_TRUE;
+        eventStruct event = {E_MOUSE_EVENT, 0, false, false, false, {0, 0}};
+        int mouseX = (e->targetX != 0 || e->targetY != 0) ? e->targetX : e->canvasX;
+        int mouseY = (e->targetX != 0 || e->targetY != 0) ? e->targetY : e->canvasY;
+        event.coordinate = mapMouseCoordinate(mouseX, mouseY);
+        pushEvent(event);
+        return EM_TRUE;
+    }
+
+    static EM_BOOL mouseDownCallback(int, const EmscriptenMouseEvent* e, void*){
+        if(eventEnabled == false) return EM_TRUE;
+        eventStruct event = {E_MOUSE_EVENT, 0, false, true, false, {0, 0}};
+        int mouseX = (e->targetX != 0 || e->targetY != 0) ? e->targetX : e->canvasX;
+        int mouseY = (e->targetX != 0 || e->targetY != 0) ? e->targetY : e->canvasY;
+        event.coordinate = mapMouseCoordinate(mouseX, mouseY);
+        event.ClickKey = (e->button == 2) ? E_MOUSE_RIGHT : E_MOUSE_LEFT;
+        pushEvent(event);
+        return EM_TRUE;
+    }
+
+    static EM_BOOL keyDownCallback(int, const EmscriptenKeyboardEvent* e, void*){
+        if(eventEnabled == false) return EM_TRUE;
+        if(e->repeat) return EM_TRUE;
+
+        int key = e->which ? e->which : e->keyCode;
+        if(key >= 65 && key <= 90) key += 32;
+        eventStruct event = {E_KEY_EVENT, key, true, false, false, {0, 0}};
+        pushEvent(event);
+        return EM_TRUE;
+    }
+
+    static EM_BOOL keyUpCallback(int, const EmscriptenKeyboardEvent* e, void*){
+        if(eventEnabled == false) return EM_TRUE;
+
+        int key = e->which ? e->which : e->keyCode;
+        if(key >= 65 && key <= 90) key += 32;
+        eventStruct event = {E_KEY_EVENT, key, false, false, false, {0, 0}};
+        pushEvent(event);
+        return EM_TRUE;
+    }
+#endif
+
+    static void scrollUp(){
+        for(int y=1;y<consoleHeight;y++){
+            for(int x=0;x<consoleWidth;x++){
+                cells[(y-1) * consoleWidth + x] = cells[y * consoleWidth + x];
+            }
+        }
+
+        for(int x=0;x<consoleWidth;x++){
+            cells[(consoleHeight - 1) * consoleWidth + x] = Cell{(uint32_t)' ', (unsigned char)currentText, (unsigned char)currentBack, false};
+        }
+        cursorY = consoleHeight - 1;
+    }
+
+    static bool isWideCodepoint(uint32_t cp){
+        return
+            (cp >= 0x1100 && cp <= 0x115F) ||
+            (cp >= 0x2329 && cp <= 0x232A) ||
+            (cp >= 0x2E80 && cp <= 0xA4CF) ||
+            (cp >= 0xAC00 && cp <= 0xD7A3) ||
+            (cp >= 0xF900 && cp <= 0xFAFF) ||
+            (cp >= 0xFE10 && cp <= 0xFE19) ||
+            (cp >= 0xFE30 && cp <= 0xFE6F) ||
+            (cp >= 0xFF01 && cp <= 0xFF60) ||
+            (cp >= 0xFFE0 && cp <= 0xFFE6) ||
+            (cp >= 0x1F300 && cp <= 0x1FAFF);
+    }
+
+    static void putCodepoint(uint32_t cp){
+        if(cp == '\r'){
+            cursorX = 0;
+            return;
+        }
+        if(cp == '\n'){
+            cursorX = 0;
+            cursorY++;
+            if(cursorY >= consoleHeight) scrollUp();
+            needRender = true;
+            return;
+        }
+        if(cp == '\t'){
+            for(int i=0;i<4;i++) putCodepoint(' ');
+            return;
+        }
+        if(cp < 32) return;
+
+        int cellWidth = isWideCodepoint(cp) ? 2 : 1;
+
+        if(cursorX >= consoleWidth || (cellWidth == 2 && cursorX >= consoleWidth - 1)){
+            cursorX = 0;
+            cursorY++;
+            if(cursorY >= consoleHeight) scrollUp();
+        }
+
+        if(cursorX >= 0 && cursorX < consoleWidth && cursorY >= 0 && cursorY < consoleHeight){
+            Cell& cell = cells[cursorY * consoleWidth + cursorX];
+            cell.ch = cp;
+            cell.text = (unsigned char)(currentText & 15);
+            cell.back = (unsigned char)(currentBack & 15);
+            cell.continuation = false;
+            needRender = true;
+
+            if(cellWidth == 2 && cursorX + 1 < consoleWidth){
+                Cell& nextCell = cells[cursorY * consoleWidth + cursorX + 1];
+                nextCell.ch = (uint32_t)' ';
+                nextCell.text = (unsigned char)(currentText & 15);
+                nextCell.back = (unsigned char)(currentBack & 15);
+                nextCell.continuation = true;
+            }
+        }
+
+        cursorX += cellWidth;
+    }
+
+    static void putUtf8(const char* data, size_t len){
+        size_t i = 0;
+        while(i < len){
+            unsigned char c0 = (unsigned char)data[i];
+            if(c0 < 0x80){
+                putCodepoint(c0);
+                i++;
+                continue;
+            }
+
+            uint32_t cp = '?';
+            int extra = 0;
+            if((c0 & 0xE0) == 0xC0 && i + 1 < len){
+                cp = ((uint32_t)(c0 & 0x1F) << 6) |
+                     ((uint32_t)((unsigned char)data[i+1] & 0x3F));
+                extra = 1;
+            }else if((c0 & 0xF0) == 0xE0 && i + 2 < len){
+                cp = ((uint32_t)(c0 & 0x0F) << 12) |
+                     ((uint32_t)((unsigned char)data[i+1] & 0x3F) << 6) |
+                     ((uint32_t)((unsigned char)data[i+2] & 0x3F));
+                extra = 2;
+            }else if((c0 & 0xF8) == 0xF0 && i + 3 < len){
+                cp = ((uint32_t)(c0 & 0x07) << 18) |
+                     ((uint32_t)((unsigned char)data[i+1] & 0x3F) << 12) |
+                     ((uint32_t)((unsigned char)data[i+2] & 0x3F) << 6) |
+                     ((uint32_t)((unsigned char)data[i+3] & 0x3F));
+                extra = 3;
+            }
+
+            putCodepoint(cp);
+            i += (size_t)extra + 1;
+        }
+    }
+
+    class ConsoleStreamBuf : public std::streambuf{
+        protected:
+            int_type overflow(int_type ch) override{
+                if(ch != traits_type::eof()){
+                    char c = (char)ch;
+                    putUtf8(&c, 1);
+                }
+                return ch;
+            }
+
+            std::streamsize xsputn(const char* s, std::streamsize n) override{
+                if(n > 0) putUtf8(s, (size_t)n);
+                return n;
+            }
+    };
+
+    static ConsoleStreamBuf consoleStreamBuf;
+    static std::streambuf* originalCoutBuf = nullptr;
+
+#ifdef __EMSCRIPTEN__
+    static vector<uint32_t> renderChars;
+    static vector<unsigned char> renderText;
+    static vector<unsigned char> renderBack;
+    static vector<unsigned char> renderContinuation;
+#endif
+
+    void present(){
+        if(initialized == false || needRender == false) return;
+
+#ifdef __EMSCRIPTEN__
+        size_t total = cells.size();
+        if(total > 0){
+            renderChars.resize(total);
+            renderText.resize(total);
+            renderBack.resize(total);
+            renderContinuation.resize(total);
+
+            for(size_t i=0;i<total;i++){
+                renderChars[i] = cells[i].ch;
+                renderText[i] = cells[i].text;
+                renderBack[i] = cells[i].back;
+                renderContinuation[i] = cells[i].continuation ? 1 : 0;
+            }
+
+            webConsoleRender(consoleWidth, consoleHeight,
+                             &renderChars[0],
+                             &renderText[0],
+                             &renderBack[0],
+                             &renderContinuation[0],
+                             visibleCursor ? 1 : 0,
+                             cursorX, cursorY);
+        }
+#else
+        cout.flush();
+#endif
+        needRender = false;
+    }
+
+    void cls();
+
+    int printfCompat(const char* format, ...){
+        char local[4096];
+
+        va_list args;
+        va_start(args, format);
+        int count = vsnprintf(local, sizeof(local), format, args);
+        va_end(args);
+
+        if(count < 0) return count;
+
+        if((size_t)count >= sizeof(local)){
+            vector<char> dynamicBuffer((size_t)count + 1);
+            va_start(args, format);
+            vsnprintf(&dynamicBuffer[0], dynamicBuffer.size(), format, args);
+            va_end(args);
+            putUtf8(&dynamicBuffer[0], (size_t)count);
+        }else{
+            putUtf8(local, (size_t)count);
+        }
+
+        return count;
+    }
+
+    void init(){ //인코딩을 UTF-8로 바꾸고, 콘솔창 제목을 설정
+        if(initialized == true) return;
+
+        ensureCellBuffer();
+        originalCoutBuf = cout.rdbuf(&consoleStreamBuf);
+
+#ifdef __EMSCRIPTEN__
+        webConsoleSetup();
+        emscripten_set_mousemove_callback("#canvas", nullptr, EM_TRUE, mouseMoveCallback);
+        emscripten_set_mousedown_callback("#canvas", nullptr, EM_TRUE, mouseDownCallback);
+        emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, keyDownCallback);
+        emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, keyUpCallback);
+#endif
+
+        initialized = true;
+        cls();
+        present();
+    }
+
+    void configureFrameRegion(int left, int top, int width, int height){
+        frameLeft = left;
+        frameTop = top;
+        frameWidth = (width > 0) ? width : 1;
+        frameHeight = (height > 0) ? height : 1;
+    }
+
+    xy toCanvasCoordinate(xy consoleCoordinate){
+        int canvasW = 1600;
+        int canvasH = 900;
+#ifdef __EMSCRIPTEN__
+        emscripten_get_canvas_element_size("#canvas", &canvasW, &canvasH);
+#endif
+        return mapCoordinateToConsole(consoleCoordinate.x, consoleCoordinate.y, canvasW, canvasH);
+    }
+
+
     void sleep(float sec){ //sec초 만큼 정지
-        Sleep(sec * 1000.0);
+        present();
+        if(sec < 0.0f) sec = 0.0f;
+        int ms = (int)(sec * 1000.0f);
+        if(ms < 1) ms = 1;
+
+#ifdef __EMSCRIPTEN__
+        emscripten_sleep(ms);
+#else
+        this_thread::sleep_for(chrono::milliseconds(ms));
+#endif
     }
 
     void cls(){ //화면을 초기화
-        system("cls");
+        for(size_t i=0;i<cells.size();i++){
+            cells[i].ch = ' ';
+            cells[i].text = (unsigned char)currentText;
+            cells[i].back = (unsigned char)currentBack;
+        }
+        cursorX = 0;
+        cursorY = 0;
+        needRender = true;
     }
 
     void windowSize(int x, int y){ //윈도우 사이즈를 바꿈
-        string query = "mode con cols=" + to_string(x) + " lines=" + to_string(y);
-        system(&query[0]);
+        consoleWidth = (x > 1) ? x : 1;
+        consoleHeight = (y > 1) ? y : 1;
+        ensureCellBuffer();
+        cls();
     }
 
     void cursorVisible(bool status){ //커서의 표시 여부
-        CONSOLE_CURSOR_INFO cursorInfo = { 0, };
-        cursorInfo.dwSize = 100;
-        if(status == true) cursorInfo.bVisible = TRUE; 
-        else cursorInfo.bVisible = FALSE;
-        SetConsoleCursorInfo(GetStdHandle(STD_OUTPUT_HANDLE), &cursorInfo);
+        visibleCursor = status;
+        needRender = true;
     }
 
     void gotoxy(int x, int y){ //커서를 (x, y)로 이동
-        COORD Pos;
-        Pos.X = x;
-        Pos.Y = y;
-        SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), Pos);
+        cursorX = clampInt(x, 0, consoleWidth - 1);
+        cursorY = clampInt(y, 0, consoleHeight - 1);
     }
 
     void setColor(int text, int back){ //글자색과 배경색을 바꿈
-        SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), text | (back << 4));
+        currentText = text;
+        currentBack = back;
     }
 
     void ErrorExit(LPCSTR lpszMessage){ //lpszMessage를 출력 후 프로그램 종료
         fprintf(stderr, "%s\n", lpszMessage);
-        SetConsoleMode(hStdin, fdwSaveOldMode);
-        system("pause > nul");
-        ExitProcess(0);
+        present();
+        exit(0);
     }
 
     void useEventInput(bool status){ //이벤트 입력(마우스 / 키보드)을 사용할지 결정
-        if(status == true){
-            hStdin = GetStdHandle(STD_INPUT_HANDLE);
-            if (hStdin == INVALID_HANDLE_VALUE)
-                ErrorExit("GetStdHandle");
+        eventEnabled = status;
+        if(eventEnabled == false) clearEvents();
+    }
 
-            if (!GetConsoleMode(hStdin, &fdwSaveOldMode))
-                ErrorExit("GetConsoleMode");
+    bool pollEvent(eventStruct* event){
+        event->eventType = NONE;
+        event->key = 0;
+        event->keyPressed = false;
+        event->Clicked = false;
+        event->ClickKey = false;
+        event->coordinate = {0, 0};
 
-            fdwMode = ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT | ENABLE_INSERT_MODE | ENABLE_EXTENDED_FLAGS;
-            if (!SetConsoleMode(hStdin, fdwMode))
-                ErrorExit("SetConsoleMode");
-
-        }else{
-            SetConsoleMode(hStdin, fdwSaveOldMode);
-        }
+        if(eventEnabled == false) return false;
+        return popEvent(event);
     }
     
     void getEvent(eventStruct* event){ //발생한 이벤트를 event에 저장
-        if (!ReadConsoleInput(hStdin, &irInBuf, 1, &cNumRead))
-            ErrorExit("ReadConsoleInput");
-        
-        switch (irInBuf.EventType){
-            case KEY_EVENT: {// keyboard 인풋일때
-                char keyStr[5];
-                sprintf(keyStr, "%d", irInBuf.Event.KeyEvent.uChar);
-                event->key = atoi(keyStr);
-                event->keyPressed = irInBuf.Event.KeyEvent.bKeyDown;
-                event->eventType = E_KEY_EVENT;
-                break;
-            }
+        event->eventType = NONE;
+        event->key = 0;
+        event->keyPressed = false;
+        event->Clicked = false;
+        event->ClickKey = false;
+        event->coordinate = {0, 0};
 
-            case MOUSE_EVENT: {// mouse 인풋일때
-                if(irInBuf.Event.MouseEvent.dwEventFlags == 0){
-                    if (irInBuf.Event.MouseEvent.dwButtonState == FROM_LEFT_1ST_BUTTON_PRESSED){
-                        event->Clicked = true;
-                        event->ClickKey = E_MOUSE_LEFT;
-                    }
-                    else if (irInBuf.Event.MouseEvent.dwButtonState == RIGHTMOST_BUTTON_PRESSED){
-                        event->Clicked = true;
-                        event->ClickKey = E_MOUSE_RIGHT;
-                    }else event->Clicked = false;
-                }
+        if(eventEnabled == false) return;
 
-                int mouse_x = irInBuf.Event.MouseEvent.dwMousePosition.X;
-                int mouse_y = irInBuf.Event.MouseEvent.dwMousePosition.Y;
-                event->eventType = E_MOUSE_EVENT;
-                event->coordinate.x = mouse_x;
-                event->coordinate.y = mouse_y;
-                break;
-            }
+        while(popEvent(event) == false){
+            present();
+#ifdef __EMSCRIPTEN__
+            emscripten_sleep(1);
+#else
+            this_thread::sleep_for(chrono::milliseconds(1));
+#endif
         }
     }
 
@@ -349,21 +815,15 @@ namespace Console{ //콘솔을 제어할 함수들을 모아놓은 이름 공간
     }
 
     void moveWindowCenter(){ //콘솔창을 화면 정가운데로 옮김
-        HWND hwndmoveWindow = GetConsoleWindow();
-
-        RECT consoleWindow;
-        ::GetWindowRect(hwndmoveWindow, &consoleWindow);
-        xy consoleWindowSize = {consoleWindow.right - consoleWindow.left, consoleWindow.bottom - consoleWindow.top};
-        xy screenSize = {GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
-        
-        ::SetWindowPos(hwndmoveWindow, HWND_TOPMOST, (screenSize.x - consoleWindowSize.x)/2, (screenSize.y - consoleWindowSize.y)/2, 0, 0, SWP_NOSIZE | SWP_NOREDRAW );
     }
 
     void moveWindowCoordinate(int x, int y){ //콘솔창을 죄측 상단을 기준으로 (x, y)로 이동
-        HWND hwndmoveWindow = GetConsoleWindow();
-        ::SetWindowPos(hwndmoveWindow, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOREDRAW );
+        (void)x;
+        (void)y;
     }
 }
+
+#define printf Console::printfCompat
 
 //=================================== 메인 코드 ===================================
 
@@ -722,6 +1182,7 @@ void Frame::printIntro(){ //게임 시작시 인트로 출력
         while (getline(logo, line)){
             cout << line << endl;
         }
+        Console::sleep(1.0f / 60.0f);
     }
 
     int nowline = 0;
@@ -756,12 +1217,16 @@ class Game{
         int patchMonsterClock; //몬스터를 패치할 클럭 배수 
         int bulletClock; //총알을 패치할 클럭 배수
         int meteorClock; //운석을 패치할 클럭 배수
+        bool meteorWarningVisible; //운석 경고선을 현재 프레임 위에 표시할지 여부
+        int meteorWarningBackColor;
         int makeClock(); //연산 클럭을 생성함
         bool updateFrame(); //배열을 조작함
         void patchPlayer(Console::xy coor); //플레이어의 가로 위치를 프레임에 패치
         void patchMonster(); //프레임의 맨 윗줄에 몬스터를 패치
         bool shiftFrame(); //맨 윗줄부터 플레이어 이전 줄을 한 칸 아래로 민다.
         void printFrame(); //매 클럭당 출력
+
+        Console::xy toCanvasCoordinate(Console::xy coor); //콘솔 좌표를 캔버스 좌표로 변환
 
         void addScore(int target); //몬스터에 따라 score변수에 점수 추가
         Element randomMonster(int from, int to); //from부터 to까지 범위에 있는 몬스터를 랜덤으로 뽑아 구조체를 반환
@@ -773,7 +1238,7 @@ class Game{
 };
 
 Game::Game(){ //생성자 : 메인 함수에서 클래스를 선언할 때 선언하자마자 호출없이 바로 살행되는 함수
-    this->printframe = new Frame(2000, 15, 25); //frame 배열을 프린트하고, 관리할 Frame 클래스를 printframe이라는 이름으로 선언
+    this->printframe = new Frame(30, 15, 25); //frame 배열을 프린트하고, 관리할 Frame 클래스를 printframe이라는 이름으로 선언
     this->frame = this->printframe->frame; //game의 frame과 printframe의 frame이 같은 배열을 가르키도록 주소를 복사
 
     this->levelCriteria = 500; //한 레벨을 올리는 데의 기준
@@ -781,6 +1246,8 @@ Game::Game(){ //생성자 : 메인 함수에서 클래스를 선언할 때 선�
     this->patchMonsterClock = 120; //patchMonsterClock의 배수 클럭마다 몬스터가 맨 윗줄에 패치된다.
     this->bulletClock = 4; //bulletClock의 배수 클럭마다 플레이어 바로 윗줄에 bullet이 생성이 된다.
     this->meteorClock = 100;
+    this->meteorWarningVisible = false;
+    this->meteorWarningBackColor = B_RED;
 
     this->printframe->consolevertical = this->printframe->vertical + 10; //콘솔창의 세로 길이
     this->printframe->consolehorizontal = this->printframe->horizontal + 170; //콘솔창의 가로 길이
@@ -802,7 +1269,9 @@ void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초�
     this->meteorHorizontal = this->PlayerHorizontal;
     this->frame[this->printframe->vertical-1][this->PlayerHorizontal].object = PLAYER; //PlayerHorizontal 칸을 PLAYER로 지정한다.
     this->frame[this->printframe->vertical-1][this->PlayerHorizontal].health = this->PlayerHealth; //플레이어의 체력을 설정한다.
-    this->distance = 0; //현재 거리
+    this->distance = 1; //현재 거리 (0으로 시작하면 첫 운석이 경고 없이 바로 생성되므로 1부터 시작)
+    this->meteorWarningVisible = false;
+    this->meteorWarningBackColor = B_RED;
     this->level = 0; //현재 난이도
     this->score = 0; //점수
     this->printframe->SkipFramePer = 1;
@@ -837,6 +1306,68 @@ void Game::init(){ //게임을 새로 시작할 때 마다 게임 상황을 초�
 int Game::makeClock(){
     bool gameStatus = true; //gameStatus을 true로 초기화
     while(1){ //게임이 종료될 때 까지 반복
+#ifdef __EMSCRIPTEN__
+        double tickMs = this->printframe->interval * 1000.0;
+        double accumulatorMs = 0.0;
+        double lastTimeMs = emscripten_get_now();
+        while (gameStatus) { //gameStatus가 false가 아니면 계속 반복한다.
+            double nowTimeMs = emscripten_get_now();
+            double elapsedMs = nowTimeMs - lastTimeMs;
+            lastTimeMs = nowTimeMs;
+
+            if(elapsedMs < 0.0) elapsedMs = 0.0;
+            if(elapsedMs > tickMs * 5.0) elapsedMs = tickMs * 5.0;
+            accumulatorMs += elapsedMs;
+            if(accumulatorMs > tickMs * 5.0) accumulatorMs = tickMs * 5.0;
+
+            Console::eventStruct Event; //이벤트를 받을 구조체
+            while(Console::pollEvent(&Event)){
+                if(Event.eventType == E_MOUSE_EVENT){ //만약 마우스 이벤트가 발생하였다면
+                    this->patchPlayer(Event.coordinate); //플레어의 위치를 패치한다.
+                }else if(Event.eventType == E_KEY_EVENT){ //만약 키보드 이벤트가 발생하였다면
+                    if(Event.keyPressed == true && Event.key == PAUSE_KEY){ //만약 정지 키(defined by PAUSE_KEY)가 눌렸다면
+                        int todo = this->SCREENpause(); //정지 화면을 출력하고, 반환값을 todo에 저장한다.
+                        lastTimeMs = emscripten_get_now();
+                        accumulatorMs = 0.0;
+                        if(todo == 1){ //만약 todo가 1 이라면(게임 종료)
+                            gameStatus = false;
+                            break;
+                        }
+                        else if(todo == 2){ //만약 todo가 2 라면(게임 계속하기)
+                            this->printframe->printBlank(); //blank 출력
+                            this->printframe->printLogo(); //로고 출력
+                            this->printframe->printAlert(1); //알림 출력
+                            this->nowAlertcode = 1; //알림 코드 설정
+                            this->printframe->printScoreframe(); //점수 프레임 출력
+                        }
+                        else if(todo == 3) this->init(); //만약 todo가 3이라면(게임 다시시작) -> init()을 통해 배열이나 체력등을 초기화 한 후 진행
+                    }
+                }
+            }
+            if(gameStatus == false) break;
+
+            bool updated = false;
+            if(accumulatorMs >= tickMs && gameStatus){
+                if(this->distance % this->levelCriteria == 0){ //만약 distance가 levelCriteria의 배수라면
+                    this->level++; //level을 1 증가시킨다.
+                    if(this->level % 3 == 0) this->printframe->SkipFramePer++; //만약 level이 3의 배수면 SkipFramePer을 1 증가시킨다. (체감 속도 증가)
+                }
+                this->distance++; //distance을 1 증가시킨다.
+
+                gameStatus = this->updateFrame(); //프레임을 업데이트한다.
+                this->printFrame(); //프레임을 출력한다.
+                updated = true;
+                accumulatorMs -= tickMs;
+            }
+            if(gameStatus == false) break;
+
+            if(updated == false){
+                double remainMs = tickMs - accumulatorMs;
+                if(remainMs > 1.0) Console::sleep((float)(remainMs / 1000.0));
+                else Console::sleep(0.001f);
+            }
+        }
+#else
         promise<Console::eventStruct> p; //p를 받겠다고 약속한다.
         future<Console::eventStruct> coor = p.get_future(); //coor을 통해 미래에 p를 받겠다고 선언한다.
         thread t(Console::waitEvent, &p); //waitEvent를 실행해 p에 받겠다는 약속을 하고 t라는 스레드를 생성한다.
@@ -885,6 +1416,7 @@ int Game::makeClock(){
             }
         }
         t.join(); //스레드 t를 종료한다.
+#endif
         if(gameStatus == false) break;
     }
     return this->SCREENover(); //만약 계속 반복되던 while문이 break되어 종료되면 게임 오버로 간다.
@@ -899,6 +1431,9 @@ int Game::makeClock(){
 void Game::printFrame(){
     if(this->distance % this->printframe->SkipFramePer == 0){
         this->printframe->print();
+        if(this->meteorWarningVisible == true){
+            this->printframe->printColorLine(B_WHITE, this->meteorWarningBackColor, this->meteorHorizontal);
+        }
         this->printframe->printScore(this->score, this->distance, this->level, this->levelCriteria, this->PlayerHealth);
     }
 }
@@ -912,6 +1447,8 @@ void Game::printFrame(){
 4. true를 반환한다.
 */
 bool Game::updateFrame(){
+    this->meteorWarningVisible = false;
+
     if(this->distance % this->bulletClock == 0){
         if(this->frame[this->printframe->vertical-2][this->PlayerHorizontal].object > 2){
             this->frame[this->printframe->vertical-2][this->PlayerHorizontal].back->object = BULLET;
@@ -930,18 +1467,23 @@ bool Game::updateFrame(){
             this->frame[0][this->meteorHorizontal].object = METEOR;
             this->frame[0][this->meteorHorizontal].health = H_METEOR;
         }
-    }else if(this->distance % this->meteorClock == this->meteorClock-21) this->meteorHorizontal = this->PlayerHorizontal;
-    else if(this->distance % this->meteorClock >= this->meteorClock-20 && this->distance % this->meteorClock <= this->meteorClock-16)
-        this->printframe->printColorLine(B_WHITE, B_RED, this->meteorHorizontal);
-
-    else if(this->distance % this->meteorClock >= this->meteorClock-15 && this->distance % this->meteorClock <= this->meteorClock-11)
-        this->printframe->printColorLine(B_WHITE, B_PURPLE, this->meteorHorizontal);
-    
-    else if(this->distance % this->meteorClock >= this->meteorClock-10 && this->distance % this->meteorClock <= this->meteorClock-6)
-        this->printframe->printColorLine(B_WHITE, B_RED, this->meteorHorizontal);
-
-    else if(this->distance % this->meteorClock >= this->meteorClock-5 && this->distance % this->meteorClock <= this->meteorClock-1)
-        this->printframe->printColorLine(B_WHITE, B_PURPLE, this->meteorHorizontal);
+    }else if(this->distance % this->meteorClock == this->meteorClock-41) this->meteorHorizontal = this->PlayerHorizontal;
+    else if(this->distance % this->meteorClock >= this->meteorClock-40 && this->distance % this->meteorClock <= this->meteorClock-31){
+        this->meteorWarningVisible = true;
+        this->meteorWarningBackColor = B_RED;
+    }
+    else if(this->distance % this->meteorClock >= this->meteorClock-30 && this->distance % this->meteorClock <= this->meteorClock-21){
+        this->meteorWarningVisible = true;
+        this->meteorWarningBackColor = B_PURPLE;
+    }
+    else if(this->distance % this->meteorClock >= this->meteorClock-20 && this->distance % this->meteorClock <= this->meteorClock-11){
+        this->meteorWarningVisible = true;
+        this->meteorWarningBackColor = B_RED;
+    }
+    else if(this->distance % this->meteorClock >= this->meteorClock-10 && this->distance % this->meteorClock <= this->meteorClock-1){
+        this->meteorWarningVisible = true;
+        this->meteorWarningBackColor = B_PURPLE;
+    }
 
     if(this->shiftFrame() == false) return false;
     if(this->distance % this->FrameClock == 0) this->patchMonster();
@@ -1350,10 +1892,6 @@ int Game::SCREENover(){ //게임 오버 화면 출력 함수를 호출 후 키�
 }
 
 int main(){
-    if(Startup::shouldRelaunchInClassicConsole() == true){
-        if(Startup::relaunchInClassicConsole() == true) return 0;
-    }
-
     int todo;
     bool KeepWhile = true;
     Game game;

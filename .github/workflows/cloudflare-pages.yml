@@ -1,0 +1,52 @@
+name: deploy-cloudflare-pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feature/web
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build web image
+        run: docker compose build dragon-flight-web
+
+      - name: Extract built site
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker compose down --volumes --remove-orphans || true
+          }
+          trap cleanup EXIT
+
+          docker compose up -d dragon-flight-web
+          container_id="$(docker compose ps -q dragon-flight-web)"
+
+          if [ -z "$container_id" ]; then
+            echo "Failed to resolve dragon-flight-web container id" >&2
+            exit 1
+          fi
+
+          rm -rf dist
+          mkdir -p dist
+          docker cp "$container_id:/usr/share/nginx/html/." dist/
+          test -f dist/index.html
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=${{ vars.CLOUDFLARE_PROJECT_NAME }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
