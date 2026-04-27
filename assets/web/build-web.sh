@@ -3,7 +3,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 OUT_DIR="$ROOT_DIR/dist"
-ASCII_DIR="$ROOT_DIR/assets/intro/intro_ascii"
+ASCII_DIR="$ROOT_DIR/assets/intro"
 SHELL_FILE="$ROOT_DIR/assets/web/web-shell.html"
 FONT_SOURCE="$ROOT_DIR/assets/fonts/NanumGothicCoding.ttf"
 rm -rf "$OUT_DIR"
@@ -31,7 +31,7 @@ em++ "$ROOT_DIR/main_web.cpp" \
   -sFULL_ES3=1 \
   -sFORCE_FILESYSTEM=1 \
   --shell-file "$SHELL_FILE" \
-  --preload-file "$ASCII_DIR@/assets/intro/intro_ascii" \
+  --preload-file "$ASCII_DIR@/assets/intro" \
   --preload-file "$ROOT_DIR/assets/logo@/assets/logo" \
   -o "$OUT_DIR/index.html"
 

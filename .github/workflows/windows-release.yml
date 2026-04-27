@@ -72,11 +72,11 @@ jobs:
           Copy-Item -Path 'dragon flight.exe' -Destination (Join-Path $releaseDir 'dragon flight.exe') -Force
           Compress-Archive -Path $releaseDir -DestinationPath (Join-Path $env:GITHUB_WORKSPACE 'out/dragon-flight.zip') -Force
 
-      - name: Upload zip artifact
+      - name: Upload extracted artifact
         uses: actions/upload-artifact@v4
         with:
           name: dragon-flight-windows
-          path: out/dragon-flight.zip
+          path: out/dragon-flight
           if-no-files-found: error
 
       - name: Attach zip to GitHub release

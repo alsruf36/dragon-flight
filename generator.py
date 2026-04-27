@@ -16,7 +16,7 @@ except AttributeError:
 ROOT_DIR = Path(__file__).resolve().parent
 DEFAULT_VIDEO = ROOT_DIR / "assets" / "intro" / "intro.mp4"
 DEFAULT_FRAME_DIR = ROOT_DIR / "tmp" / "intro_frames"
-DEFAULT_ASCII_DIR = ROOT_DIR / "assets" / "intro" / "intro_ascii"
+DEFAULT_ASCII_DIR = ROOT_DIR / "assets" / "intro"
 DEFAULT_DATA_PATH = ROOT_DIR / "assets" / "intro" / "data.json"
 DEFAULT_FRAME_COUNT = 82
 

@@ -626,7 +626,7 @@ void Frame::printIntro(){ //게임 시작시 인트로 출력
         int nowline = 0;
         string line;
         fstream logo;
-        string filename = "assets/intro/intro_ascii/" + to_string(i) + ".txt";
+        string filename = "assets/intro/" + to_string(i) + ".txt";
         Console::gotoxy(0, 0);
         logo.open(&filename[0], fstream::in);
         while (getline(logo, line)){
