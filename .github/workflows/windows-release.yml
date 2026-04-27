@@ -37,7 +37,7 @@ jobs:
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
-          update: true
+          update: false
           cache: true
           install: >-
             mingw-w64-x86_64-gcc
@@ -127,15 +127,12 @@ jobs:
           $releaseAssets = Join-Path $releaseDir 'assets'
           $releaseExe = Join-Path $releaseDir 'dragon-flight.exe'
           $toolDir = Split-Path $bat2exe -Parent
-          $extractDir = Join-Path $env:SystemRoot 'Temp'
           $argumentList = @(
             '/bat', $batchFile,
             '/exe', $portableExe,
             '/include', $releaseAssets,
             '/include', $releaseExe,
             '/workdir', $releaseDir,
-            '/extractdir', $extractDir,
-            '/uac-admin',
             '/delete-on-exit',
             '/x64',
             '/invisible'
