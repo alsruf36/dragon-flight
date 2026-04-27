@@ -1,0 +1,78 @@
+name: build-windows-release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feature/web
+    tags:
+      - 'v*'
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install FFmpeg
+        shell: pwsh
+        run: choco install ffmpeg -y
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: python -m pip install --upgrade pip pillow
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+
+      - name: Build Windows executable
+        shell: msys2 {0}
+        run: >-
+          g++ -std=c++17 -O2 -static-libgcc -static-libstdc++
+          main.cpp
+          -o "dragon flight.exe"
+
+      - name: Generate ASCII intro assets
+        shell: pwsh
+        run: >-
+          python generator.py
+          --frame-dir "$env:RUNNER_TEMP/intro_frames"
+          --ascii-dir "$env:GITHUB_WORKSPACE/out/dragon-flight/assets/intro"
+          --frame-limit 82
+
+      - name: Package release layout
+        shell: pwsh
+        run: |
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE 'out/dragon-flight'
+          $assetDir = Join-Path $releaseDir 'assets'
+          $logoDir = Join-Path $assetDir 'logo'
+          New-Item -ItemType Directory -Force -Path $logoDir | Out-Null
+          Copy-Item -Path 'assets/logo/*' -Destination $logoDir -Recurse -Force
+          Copy-Item -Path 'dragon flight.exe' -Destination (Join-Path $releaseDir 'dragon flight.exe') -Force
+          Compress-Archive -Path $releaseDir -DestinationPath (Join-Path $env:GITHUB_WORKSPACE 'out/dragon-flight.zip') -Force
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dragon-flight-windows
+          path: out/dragon-flight.zip
+          if-no-files-found: error
+
+      - name: Attach zip to GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/dragon-flight.zip
