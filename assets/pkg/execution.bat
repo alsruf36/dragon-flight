@@ -1,1 +1,1 @@
-@conhost.exe "%~dp0dragon flight.exe" %*
+@conhost.exe "%~dp0dragon-flight.exe" %*

@@ -69,7 +69,7 @@ jobs:
           $logoDir = Join-Path $assetDir 'logo'
           New-Item -ItemType Directory -Force -Path $logoDir | Out-Null
           Copy-Item -Path 'assets/logo/*' -Destination $logoDir -Recurse -Force
-          Copy-Item -Path 'dragon flight.exe' -Destination (Join-Path $releaseDir 'dragon flight.exe') -Force
+          Copy-Item -Path 'dragon flight.exe' -Destination (Join-Path $releaseDir 'dragon-flight.exe') -Force
 
       - name: Build portable wrapper executable
         shell: pwsh
@@ -79,7 +79,7 @@ jobs:
           $bat2exe = Join-Path $env:GITHUB_WORKSPACE 'assets/pkg/bat2exe.exe'
           $batchFile = Join-Path $env:GITHUB_WORKSPACE 'assets/pkg/execution.bat'
           $releaseAssets = Join-Path $releaseDir 'assets'
-          $releaseExe = Join-Path $releaseDir 'dragon flight.exe'
+          $releaseExe = Join-Path $releaseDir 'dragon-flight.exe'
           $toolDir = Split-Path $bat2exe -Parent
           $argumentList = @(
             '/bat', $batchFile,
