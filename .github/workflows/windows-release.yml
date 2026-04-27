@@ -76,7 +76,7 @@ jobs:
         run: |
           $releaseDir = Join-Path $env:GITHUB_WORKSPACE 'out/dragon-flight'
           $portableExe = Join-Path $env:GITHUB_WORKSPACE 'out/dragon-flight-portable.exe'
-          & "$env:GITHUB_WORKSPACE/assets/pkg/bat2exe.exe" /bat "$env:GITHUB_WORKSPACE/assets/pkg/execution.bat" /exe $portableExe /include $releaseDir /include (Join-Path $releaseDir 'dragon flight.exe') /x64 /invisible
+          & "$env:GITHUB_WORKSPACE/assets/pkg/bat2exe.exe" /bat "$env:GITHUB_WORKSPACE/assets/pkg/execution.bat" /exe $portableExe /include assets /include "dragon flight.exe" /workdir $releaseDir /x64 /invisible
           if (!(Test-Path $portableExe)) {
             throw 'Portable executable was not created.'
           }
