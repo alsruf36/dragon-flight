@@ -41,7 +41,15 @@ jobs:
       - name: Build Windows executable
         shell: msys2 {0}
         run: >-
-          g++ -std=c++17 -O2 -static-libgcc -static-libstdc++
+          g++ -std=c++17 -O2
+          -static-libgcc -static-libstdc++
+          -Wl,-Bstatic
+          -lstdc++
+          -lpthread
+          -Wl,-Bstatic,--whole-archive
+          -lwinpthread
+          -Wl,-Bdynamic
+          -Wl,--no-whole-archive
           main.cpp
           -o "dragon flight.exe"
 
