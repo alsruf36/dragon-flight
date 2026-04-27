@@ -241,7 +241,8 @@ namespace Console{ //콘솔을 제어할 함수들을 모아놓은 이름 공간
     } eventStruct;
 
     void init(){ //인코딩을 UTF-8로 바꾸고, 콘솔창 제목을 설정
-        system("chcp 65001");
+        SetConsoleOutputCP(CP_UTF8);
+        SetConsoleCP(CP_UTF8);
         SetConsoleTitle(TEXT("dragon flight"));
     }
 
