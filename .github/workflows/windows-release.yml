@@ -76,8 +76,21 @@ jobs:
         run: |
           $releaseDir = Join-Path $env:GITHUB_WORKSPACE 'out/dragon-flight'
           $portableExe = Join-Path $env:GITHUB_WORKSPACE 'out/dragon-flight-portable.exe'
-          & "$env:GITHUB_WORKSPACE/assets/pkg/bat2exe.exe" /bat "$env:GITHUB_WORKSPACE/assets/pkg/execution.bat" /exe $portableExe /include assets /include "dragon flight.exe" /workdir $releaseDir /x64 /invisible
+          $bat2exe = Join-Path $env:GITHUB_WORKSPACE 'assets/pkg/bat2exe.exe'
+          $batchFile = Join-Path $env:GITHUB_WORKSPACE 'assets/pkg/execution.bat'
+          $toolDir = Split-Path $bat2exe -Parent
+          $argumentList = @(
+            '/bat', $batchFile,
+            '/exe', $portableExe,
+            '/include', 'assets',
+            '/include', 'dragon flight.exe',
+            '/workdir', $releaseDir,
+            '/x64',
+            '/invisible'
+          )
+          Start-Process -FilePath $bat2exe -ArgumentList $argumentList -WorkingDirectory $toolDir -Wait
           if (!(Test-Path $portableExe)) {
+            Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Filter 'dragon-flight-portable*.exe' | Select-Object FullName
             throw 'Portable executable was not created.'
           }
 
