@@ -51,6 +51,7 @@ class Game
 //IO 컨트롤
 #include <iostream>
 #include <string>
+#include <vector>
 #include <algorithm>
 #include <thread>
 #include <future>
@@ -63,8 +64,96 @@ class Game
 #include <Windows.h>
 #include <tchar.h>
 #include <shlobj.h>
+#include <shellapi.h>
 #include <exdisp.h>
 using namespace std;
+
+namespace Startup{
+    const wchar_t* RELAUNCH_GUARD = L"DRAGON_FLIGHT_CONHOST_RELAUNCHED";
+
+    wstring quoteArg(const wstring& arg){
+        wstring quoted = L"\"";
+        int backslashCount = 0;
+
+        for(wchar_t ch : arg){
+            if(ch == L'\\'){
+                backslashCount++;
+            }
+            else if(ch == L'\"'){
+                quoted.append(backslashCount * 2 + 1, L'\\');
+                quoted += ch;
+                backslashCount = 0;
+            }
+            else{
+                if(backslashCount > 0){
+                    quoted.append(backslashCount, L'\\');
+                    backslashCount = 0;
+                }
+                quoted += ch;
+            }
+        }
+
+        if(backslashCount > 0) quoted.append(backslashCount * 2, L'\\');
+        quoted += L"\"";
+        return quoted;
+    }
+
+    bool shouldRelaunchInClassicConsole(){
+        if(GetEnvironmentVariableW(RELAUNCH_GUARD, NULL, 0) > 0) return false;
+        return GetEnvironmentVariableW(L"WT_SESSION", NULL, 0) > 0;
+    }
+
+    bool relaunchInClassicConsole(){
+        int argc = 0;
+        LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+        if(argv == NULL) return false;
+
+        wchar_t exePath[MAX_PATH];
+        if(GetModuleFileNameW(NULL, exePath, MAX_PATH) == 0){
+            LocalFree(argv);
+            return false;
+        }
+
+        wstring command = L"conhost.exe -- ";
+        command += quoteArg(exePath);
+        for(int i = 1; i < argc; i++){
+            command += L" ";
+            command += quoteArg(argv[i]);
+        }
+        LocalFree(argv);
+
+        SetEnvironmentVariableW(RELAUNCH_GUARD, L"1");
+
+        STARTUPINFOW si = { 0, };
+        PROCESS_INFORMATION pi = { 0, };
+        si.cb = sizeof(si);
+
+        vector<wchar_t> mutableCommand(command.begin(), command.end());
+        mutableCommand.push_back(L'\0');
+
+        BOOL created = CreateProcessW(
+            NULL,
+            mutableCommand.data(),
+            NULL,
+            NULL,
+            FALSE,
+            CREATE_NEW_CONSOLE,
+            NULL,
+            NULL,
+            &si,
+            &pi
+        );
+
+        if(created == TRUE){
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+            return true;
+        }
+
+        SetEnvironmentVariableW(RELAUNCH_GUARD, NULL);
+        return false;
+    }
+}
 
 //색깔 정의
 #define BLACK 0 //어두움
@@ -1260,6 +1349,10 @@ int Game::SCREENover(){ //게임 오버 화면 출력 함수를 호출 후 키�
 }
 
 int main(){
+    if(Startup::shouldRelaunchInClassicConsole() == true){
+        if(Startup::relaunchInClassicConsole() == true) return 0;
+    }
+
     int todo;
     bool KeepWhile = true;
     Game game;
