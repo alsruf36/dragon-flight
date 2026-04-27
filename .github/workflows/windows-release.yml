@@ -115,18 +115,42 @@ jobs:
           $logoDir = Join-Path $assetDir 'logo'
           New-Item -ItemType Directory -Force -Path $logoDir | Out-Null
           Copy-Item -Path 'assets/logo/*' -Destination $logoDir -Recurse -Force
-          Copy-Item -Path 'dragon flight.exe' -Destination (Join-Path $releaseDir 'dragon flight.exe') -Force
-          Compress-Archive -Path $releaseDir -DestinationPath (Join-Path $env:GITHUB_WORKSPACE 'out/dragon-flight.zip') -Force
+          Copy-Item -Path 'dragon flight.exe' -Destination (Join-Path $releaseDir 'dragon-flight.exe') -Force
 
-      - name: Upload extracted artifact
+      - name: Build portable wrapper executable
+        shell: pwsh
+        run: |
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE 'out/dragon-flight'
+          $portableExe = Join-Path $env:GITHUB_WORKSPACE 'out/dragon-flight-portable.exe'
+          $bat2exe = Join-Path $env:GITHUB_WORKSPACE 'assets/pkg/bat2exe.exe'
+          $batchFile = Join-Path $env:GITHUB_WORKSPACE 'assets/pkg/execution.bat'
+          $releaseAssets = Join-Path $releaseDir 'assets'
+          $releaseExe = Join-Path $releaseDir 'dragon-flight.exe'
+          $toolDir = Split-Path $bat2exe -Parent
+          $argumentList = @(
+            '/bat', $batchFile,
+            '/exe', $portableExe,
+            '/include', $releaseAssets,
+            '/include', $releaseExe,
+            '/workdir', $releaseDir,
+            '/x64',
+            '/invisible'
+          )
+          Start-Process -FilePath $bat2exe -ArgumentList $argumentList -WorkingDirectory $toolDir -Wait
+          if (!(Test-Path $portableExe)) {
+            Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Filter 'dragon-flight-portable*.exe' | Select-Object FullName
+            throw 'Portable executable was not created.'
+          }
+
+      - name: Upload portable artifact
         uses: actions/upload-artifact@v4
         with:
           name: dragon-flight-windows
-          path: out/dragon-flight
+          path: out/dragon-flight-portable.exe
           if-no-files-found: error
 
-      - name: Attach zip to GitHub release
+      - name: Attach portable executable to GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: out/dragon-flight.zip
+          files: out/dragon-flight-portable.exe
