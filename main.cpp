@@ -179,7 +179,7 @@ namespace Console{ //콘솔을 제어할 함수들을 모아놓은 이름 공간
 
     void gotoxy(int x, int y){ //커서를 (x, y)로 이동
         COORD Pos;
-        Pos.X = 2 * x;
+        Pos.X = x;
         Pos.Y = y;
         SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), Pos);
     }
@@ -335,14 +335,14 @@ void Frame::print(){ //게임중 배열을 프린트
 
     if(this->alertcode == 2) Console::setColor(B_RED, BLACK);
     else Console::setColor(B_WHITE, BLACK);
-    Console::gotoxy(this->LeftSpace/2, this->UpperSpace);
+    Console::gotoxy(this->LeftSpace, this->UpperSpace);
     printf("┌");
     for(int v=0;v<this->horizontal;v++) printf("─");
     printf("┐\n");
 
     int v;
     for(v=0;v<this->vertical;v++){
-        Console::gotoxy(this->LeftSpace/2, this->UpperSpace+v+1);
+        Console::gotoxy(this->LeftSpace, this->UpperSpace+v+1);
         if(this->alertcode == 2) Console::setColor(B_RED, BLACK);
         else Console::setColor(B_WHITE, BLACK);
         printf("│");
@@ -381,7 +381,7 @@ void Frame::print(){ //게임중 배열을 프린트
         Console::setColor(B_WHITE, BLACK);
     }
 
-    Console::gotoxy(this->LeftSpace/2, this->UpperSpace+v+1);
+    Console::gotoxy(this->LeftSpace, this->UpperSpace+v+1);
     if(this->alertcode == 2) Console::setColor(B_RED, BLACK);
     else Console::setColor(B_WHITE, BLACK);
     printf("└");
@@ -393,20 +393,20 @@ void Frame::print(){ //게임중 배열을 프린트
 void Frame::printAlert(int alertcode){
     switch(alertcode){
     case 0:
-        Console::gotoxy((this->consolehorizontal - 30)/4, this->consolevertical - 1);
+        Console::gotoxy((this->consolehorizontal - 30)/2, this->consolevertical - 1);
         cout << "                                                                    ";
         this->alertcode = 0;
         break;
 
     case 1:
-        Console::gotoxy((this->consolehorizontal - 30)/4, this->consolevertical - 1);
+        Console::gotoxy((this->consolehorizontal - 30)/2, this->consolevertical - 1);
         Console::setColor(B_WHITE, BLACK);
         cout << "[W]를 눌러 일지정지 할 수 있습니다.         ";
         this->alertcode = 1;
         break;
 
     case 2:
-        Console::gotoxy((this->consolehorizontal - 32)/4, this->consolevertical - 1);
+        Console::gotoxy((this->consolehorizontal - 32)/2, this->consolevertical - 1);
         Console::setColor(B_RED, BLACK);
         cout << "마우스를 플레이 범위 안으로 옮겨주세요!      ";
         Console::setColor(B_WHITE, BLACK);
@@ -425,26 +425,26 @@ void Frame::printLogo(){ //게임중 로고를 프린트
     logo.open("logo/MAINLOGO", fstream::in);
     while (getline(logo, line))
     {
-        Console::gotoxy(this->consolehorizontal - 150, nowline++);
+        Console::gotoxy((this->consolehorizontal - 150) * 2, nowline++);
         cout << line << endl;
     }
 }
 
 void Frame::printScoreframe(){ //게임중 스코어보드 틀을 프린트
-    Console::gotoxy(this->horizontal, this->ScoreboardHeight);
+    Console::gotoxy(this->horizontal * 2, this->ScoreboardHeight);
     printf("┌");
     for(int h=0;h<22;h++) printf("─");
     printf("┐");
 
     int v;
     for(v=0;v<7;v++){
-        Console::gotoxy(this->horizontal, this->ScoreboardHeight + 1 + v);
+        Console::gotoxy(this->horizontal * 2, this->ScoreboardHeight + 1 + v);
         printf("│");
         for(int h=0;h<22;h++) printf(" ");
         printf("│");
     }
 
-    Console::gotoxy(this->horizontal, this->ScoreboardHeight + 1 + v);
+    Console::gotoxy(this->horizontal * 2, this->ScoreboardHeight + 1 + v);
     printf("└");
     for(int v=0;v<22;v++) printf("─");
     printf("┘\n");
@@ -452,24 +452,24 @@ void Frame::printScoreframe(){ //게임중 스코어보드 틀을 프린트
 
 
 void Frame::printScore(int score, int distance, int level, int levelCriteria, int PlayerHealth){ //게임중 스코어보드 내에 내용을 출력
-    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 2);
+    Console::gotoxy((this->horizontal + 1) * 2, this->ScoreboardHeight + 2);
     printf("점수 : %d점", score);
     
-    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 3);
+    Console::gotoxy((this->horizontal + 1) * 2, this->ScoreboardHeight + 3);
     printf("거리 : %dm", distance);
 
-    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 4);
+    Console::gotoxy((this->horizontal + 1) * 2, this->ScoreboardHeight + 4);
     printf("체력 : ");
     Console::setColor(B_RED, BLACK);
     for(int i=0;i<PlayerHealth;i++) printf("❤ ");
     for(int i=0;i<H_PLAYER - PlayerHealth;i++) printf("  ");
     Console::setColor(B_WHITE, BLACK);
 
-    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 5);
+    Console::gotoxy((this->horizontal + 1) * 2, this->ScoreboardHeight + 5);
     printf("페이즈 : %d번째 ", level + 1);
 
-    Console::gotoxy(this->horizontal + 1, this->ScoreboardHeight + 6);
-    printf("현재 페이즈 [%.1lf%] ", ((double)(distance % levelCriteria)/(double)levelCriteria)*(double)100);
+    Console::gotoxy((this->horizontal + 1) * 2, this->ScoreboardHeight + 6);
+    printf("현재 페이즈 [%.1lf%%] ", ((double)(distance % levelCriteria)/(double)levelCriteria)*(double)100);
 }
 
 void Frame::printMain(){ //메인 화면을 출력
@@ -498,17 +498,17 @@ void Frame::printMain(){ //메인 화면을 출력
     logo.open("logo/MAINLOGO", fstream::in);
     while (getline(logo, line))
     {
-        Console::gotoxy((this->consolehorizontal - 100) / 4, 4 + nowline++);
+        Console::gotoxy((this->consolehorizontal - 100) / 2, 4 + nowline++);
         cout << line << endl;
     }
 
-    Console::gotoxy((this->consolehorizontal - 14) / 4, this->consolevertical + 1);
+    Console::gotoxy((this->consolehorizontal - 14) / 2, this->consolevertical + 1);
     printf("시작하기 [Q]");
 
-    Console::gotoxy((this->consolehorizontal - 14) / 4, this->consolevertical + 5);
+    Console::gotoxy((this->consolehorizontal - 14) / 2, this->consolevertical + 5);
     printf("종료하기 [W]");
 
-    Console::gotoxy((this->consolehorizontal - 14) / 4, this->consolevertical + 9);
+    Console::gotoxy((this->consolehorizontal - 14) / 2, this->consolevertical + 9);
     printf("튜토리얼 [E]");
 }
 
@@ -537,17 +537,17 @@ void Frame::printPause(){ //일시정지 화면을 출력
     logo.open("logo/PAUSELOGO", fstream::in);
     while (getline(logo, line))
     {
-        Console::gotoxy((this->consolehorizontal - 42) / 4, 4 + nowline++);
+        Console::gotoxy((this->consolehorizontal - 42) / 2, 4 + nowline++);
         cout << line << endl;
     }
 
-    Console::gotoxy((this->consolehorizontal - 14) / 4, 15);
+    Console::gotoxy((this->consolehorizontal - 14) / 2, 15);
     printf("종료하기 [Q]");
 
-    Console::gotoxy((this->consolehorizontal - 14) / 4, 19);
+    Console::gotoxy((this->consolehorizontal - 14) / 2, 19);
     printf("복귀하기 [W]");
 
-    Console::gotoxy((this->consolehorizontal - 14) / 4, 23);
+    Console::gotoxy((this->consolehorizontal - 14) / 2, 23);
     printf("다시시작 [E]");
 }
 
@@ -564,7 +564,7 @@ void Frame::printColorLine(int textcolor, int backcolor, int horizontal){ //운�
     Console::setColor(textcolor, backcolor);
 
     for(int i=0;i<this->vertical - 1;i++){
-        Console::gotoxy((this->LeftSpace + 1)/2 + horizontal/2, this->UpperSpace + 1 + i);
+        Console::gotoxy(this->LeftSpace + 1 + horizontal, this->UpperSpace + 1 + i);
         printf(" ! ");
     }
 
@@ -596,26 +596,26 @@ void Frame::printGameOver(int score, int distance, int level){ //게임 오버 �
     logo.open("logo/GAMEOVERLOGO", fstream::in);
     while (getline(logo, line))
     {
-        Console::gotoxy((this->consolehorizontal - 74) / 4, 4 + nowline++);
+        Console::gotoxy((this->consolehorizontal - 74) / 2, 4 + nowline++);
         cout << line << endl;
     }
 
-    Console::gotoxy((this->consolehorizontal - 14) / 4, 15);
+    Console::gotoxy((this->consolehorizontal - 14) / 2, 15);
     printf("다시시작 [Q]");
 
-    Console::gotoxy((this->consolehorizontal - 14) / 4, 19);
+    Console::gotoxy((this->consolehorizontal - 14) / 2, 19);
     printf("종료하기 [W]");
 
-    Console::gotoxy((this->consolehorizontal - 14) / 4, 23);
+    Console::gotoxy((this->consolehorizontal - 14) / 2, 23);
     printf("메인화면 [E]");
 
-    Console::gotoxy((this->consolehorizontal - 14) / 4, 25);
+    Console::gotoxy((this->consolehorizontal - 14) / 2, 25);
     printf("간 거리 : %dm", distance);
     
-    Console::gotoxy((this->consolehorizontal - 14) / 4, 27);
+    Console::gotoxy((this->consolehorizontal - 14) / 2, 27);
     printf("총 점수 : %d점", score);
 
-    Console::gotoxy((this->consolehorizontal - 14) / 4, 29);
+    Console::gotoxy((this->consolehorizontal - 14) / 2, 29);
     printf("%d 페이즈 달성!", level);
 }
 
@@ -640,7 +640,7 @@ void Frame::printIntro(){ //게임 시작시 인트로 출력
     logo.open("logo/MAINTAINERLOGO", fstream::in);
     while (getline(logo, line))
     {
-        Console::gotoxy((166 - 75) / 4, 47/2 + nowline++);
+        Console::gotoxy((166 - 75) / 2, 47/2 + nowline++);
         cout << line << endl;
     }
 
